@@ -2,6 +2,10 @@
 
 RetrievAI is a simple Streamlit application designed to facilitate Retrieval-Augmented-Generation (RAG) for literature search and review purposes. The app leverages ChromaDB and the OpenAI API to provide an efficient and effective way to search and review literature documents.
 
+## Screenshots
+
+![Home Page](assets/screenshot_home.png)
+
 ## Packages Used
 
 - **Streamlit**: A web application framework that allows the creation of interactive and beautiful web apps quickly.

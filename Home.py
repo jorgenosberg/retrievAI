@@ -151,13 +151,12 @@ def main():
     )
 
     # Prepare the chain
-    docs_chain = create_stuff_documents_chain(
+    qa = RetrievalQA.from_chain_type(
         llm=llm,
-        prompt=PROMPT,
-    )
-    qa = create_retrieval_chain(
+        chain_type="stuff",
         retriever=retriever,
-        combine_docs_chain=docs_chain,
+        return_source_documents=True,
+        chain_type_kwargs={"prompt": PROMPT},
     )
 
     if run_openai_query and query:

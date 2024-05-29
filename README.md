@@ -1,6 +1,6 @@
 # RetrievAI
 
-RetrievAI is a simple Streamlit application designed to facilitate Retrieval-Augmented-Generation (RAG) for literature search and review purposes. The app leverages ChromaDB and the OpenAI API to provide an efficient and effective way to search and review literature documents.
+RetrievAI is a simple Streamlit application that uses Retrieval-Augmented-Generation (RAG) to speed up literature search and review processes. The app combines a local ChromaDB vector database and the OpenAI API to provide an efficient and effective way to search and review literature documents.
 
 ## Screenshots
 
@@ -39,13 +39,18 @@ pip install -r requirements.txt
 Update the `.streamlit/secrets.toml` file with the necessary settings, including your OpenAI API key. The file should look something like this:
 
 ```toml
-[api_keys]
-openai_api_key = "your_openai_api_key_here"
+PERSIST_DIRECTORY="db"
+CHUNK_SIZE=2000
+CHUNK_OVERLAP=200
+OPENAI_API_KEY="<YOUR_API_KEY>"
+SOURCE_DIRECTORY="source_documents"
 ```
+
+A `.streamlit/secrets.example.toml` file is also provided as a template.
 
 ### 4. Add Source Documents
 
-Add your source documents to the `source_documents` folder. These documents will be used for the literature search and review.
+Add your source documents to the `source_documents` folder. These documents will be included in the ingestion process when you run the ingestion script and will be a part of the document search later. The documents can be in any format, such as PDF, DOCX, or TXT files. The app will automatically extract the text from these documents and store them in ChromaDB for retrieval purposes. REMEMBER: These documents will be passed as context to the OpenAI API, so make sure to only include documents that you have the right to use.
 
 ### 5. Run Ingestion Script
 
@@ -78,7 +83,7 @@ For more information on each package and how they are used within the app, refer
 
 - [Streamlit Documentation](https://docs.streamlit.io/)
 - [LangChain Documentation](https://docs.langchain.com/)
-- [ChromaDB Documentation](https://chromadb.com/docs)
-- [OpenAI API Documentation](https://beta.openai.com/docs/)
+- [ChromaDB Documentation](https://docs.trychroma.com/)
+- [OpenAI API Documentation](https://platform.openai.com/docs/overview)
 
 By following these steps, you should be able to set up and run the RetrievAI app, making literature search and review more efficient and effective. Enjoy using RetrievAI!

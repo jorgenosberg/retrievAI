@@ -58,14 +58,14 @@ st.set_page_config(
 # Sidebar contents
 with st.sidebar:
     model_list = [
+        "gpt-4o",
         "gpt-3.5-turbo",
         "gpt-4-turbo",
         "gpt-4",
-        "gpt-4o",
     ]
 
     if "selected_model" not in st.session_state:
-        st.session_state.selected_model = model_list[1]
+        st.session_state.selected_model = model_list[0]
     if "chunks_to_retrieve" not in st.session_state:
         st.session_state.chunks_to_retrieve = 10
 

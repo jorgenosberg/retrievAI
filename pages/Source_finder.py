@@ -79,7 +79,11 @@ def main():
     client = chromadb.PersistentClient(path=PERSIST_DIRECTORY)
     db = Chroma(client=client, embedding_function=embeddings)
     retriever = db.as_retriever(
-        search_kwargs={"k": sources_to_retrieve, "score_threshold": similarity_treshold}
+        search_type="similarity_score_threshold",
+        search_kwargs={
+            "score_threshold": similarity_treshold,
+            "k": sources_to_retrieve,
+        },
     )
 
     if query:

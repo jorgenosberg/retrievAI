@@ -22,7 +22,7 @@ Follow these steps to set up and run the RetrievAI application on your local mac
 First, you need to clone or fork the repository to your local machine. (Or you can download the code as a ZIP file and extract it.)
 
 ```bash
-git clone https://github.com/yourusername/RetrievAI.git
+git clone https://github.com/jorgenosberg/RetrievAI.git
 cd RetrievAI
 ```
 

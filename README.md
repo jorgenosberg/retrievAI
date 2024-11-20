@@ -4,7 +4,7 @@ RetrievAI is a simple Streamlit application that uses Retrieval-Augmented-Genera
 
 ## 📸 Screenshots
 
-![Home Page](assets/screenshot_home.png)
+![Home Page](retrievai/assets/screenshot_home.png)
 
 ## 📦 Packages used
 

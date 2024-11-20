@@ -20,7 +20,7 @@ def main():
     # Sidebar contents
     with st.sidebar:
         st.info(
-            "This page shows all the documents you have added to the **source_documents** folder. If you would like to add more documents to the Chroma database, simply add additional documents to the folder and run the **ingest.py** script again. \n\nTo ask a new question, go to the **Home** page."
+            "This page shows all the documents you have added to the **documents** folder. If you would like to add more documents to the Chroma database, simply add additional documents to the folder and run the **ingest.py** script again. \n\nTo ask a new question, go to the **Home** page."
         )
         _, center_column, _ = st.columns([1, 3, 1])
         with center_column:
@@ -28,7 +28,7 @@ def main():
 
     st.header("Your documents 🗄")
 
-    files = glob("source_documents/*.pdf")
+    files = glob("documents/*.pdf")
 
     st.write(f"You currently have **{len(files)}** documents in your library.")
 
@@ -38,10 +38,10 @@ def main():
         for index, file in enumerate(files):
 
             if st.button(
-                f"**{file.replace('source_documents/', '')}**",
+                f"**{file.replace('documents/', '')}**",
                 use_container_width=True,
                 key=index,
-                help=f"Click to view {file.replace('source_documents/', '')}",
+                help=f"Click to view {file.replace('documents/', '')}",
                 type=(
                     "primary" if st.session_state.selected_file == file else "secondary"
                 ),
@@ -55,7 +55,7 @@ def main():
                 base64_pdf = base64.b64encode(f.read()).decode("utf-8")
 
             st.write(
-                f"**{st.session_state.selected_file.replace('source_documents/', '')}:**"
+                f"**{st.session_state.selected_file.replace('documents/', '')}:**"
             )
 
             st.markdown(

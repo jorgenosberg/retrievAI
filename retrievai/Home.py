@@ -1,38 +1,15 @@
-#!/usr/bin/env python3
-
-# Langchain LLM
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain_openai import ChatOpenAI
-from langchain.chains import RetrievalQA
-from langchain.chains.retrieval import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.callbacks.base import BaseCallbackHandler
+from langchain.chains.retrieval import create_retrieval_chain
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma
+from langchain_openai import ChatOpenAI
 import openai
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 import chromadb
 from glob import glob
-
-# Env
-
-# Streamlit
 import streamlit as st
 from streamlit_extras.add_vertical_space import add_vertical_space
 from streamlit_extras.switch_page_button import switch_page
-
-# Datetime
-from datetime import datetime
-
-
-class StreamlitHandler(BaseCallbackHandler):
-    def __init__(self, container, initial_text=""):
-        self.container = container
-        self.text = initial_text
-
-    def on_llm_new_token(self, token: str, **kwargs) -> None:
-        self.text += token
-        self.container.success(self.text)
-
 
 # Load the environment variables
 PERSIST_DIRECTORY = st.secrets["PERSIST_DIRECTORY"]
@@ -46,7 +23,7 @@ prompt_template = """Use the following pieces of context to answer the question 
 {context}
 </context>
 
-Question: {question}:"""
+Question: {input}:"""
 
 # Set page config
 st.set_page_config(
@@ -58,10 +35,11 @@ st.set_page_config(
 # Sidebar contents
 with st.sidebar:
     model_list = [
+        "gpt-4o-mini",
         "gpt-4o",
-        "gpt-3.5-turbo",
         "gpt-4-turbo",
         "gpt-4",
+        "gpt-3.5-turbo",
     ]
 
     if "selected_model" not in st.session_state:
@@ -83,7 +61,7 @@ with st.sidebar:
     )
     _, center_column, _ = st.columns([1, 3, 1])
     with center_column:
-        st.write("*Made with *❤️* by Jørgen*")
+        st.write("*Made with ❤️by Jørgen*")
 
 
 def main():
@@ -94,23 +72,25 @@ def main():
     chunks_to_retrieve = st.session_state.chunks_to_retrieve
 
     # Prepare the embeddings and retriever
-    embeddings = OpenAIEmbeddings()
+    embeddings = OpenAIEmbeddings(
+        model="text-embedding-3-small"
+    )
     client = chromadb.PersistentClient(path=PERSIST_DIRECTORY)
     db = Chroma(client=client, embedding_function=embeddings)
-    retriever = db.as_retriever(search_kwargs={"k": chunks_to_retrieve})
+    retriever = db.as_retriever(search_kwargs={"k": chunks_to_retrieve}, search_type="mmr")
 
     # Check if the persist_directory is empty except for .gitkeep
     db_content = db.get()["documents"]
     if len(db_content) == 0:
         st.warning(
-            "No documents found in the database. Please add documents to the source_documents folder and run the ingest.py script."
+            "No documents found in the database. Please add documents to the documents folder and run the ingest.py script."
             + "\n\n"
             + "If you query ChatGPT now, you will only get general answers from the selected model without any context from your documents. Please note that this might lead to irrelevant answers and hallucination, even with the model temperature set to 0."
         )
 
     files = list(
         map(
-            lambda x: x.replace("source_documents/", ""), glob("source_documents/*.pdf")
+            lambda x: x.replace("documents/", ""), glob("documents/*.pdf")
         )
     )
     selected_documents = st.multiselect(
@@ -121,7 +101,7 @@ def main():
         selected_documents = files
     else:
 
-        paths = list(map(lambda x: f"source_documents/{x}", selected_documents))
+        paths = list(map(lambda x: f"documents/{x}", selected_documents))
         document_filter = {"source": {"$in": paths}}
         retriever = db.as_retriever(
             search_kwargs={"k": chunks_to_retrieve, "filter": document_filter}
@@ -140,42 +120,51 @@ def main():
 
     # Prepare streaming callback
     answer_box = st.empty()
-    callback = StreamlitHandler(answer_box)
+
     llm = ChatOpenAI(
-        model=selected_model, temperature=0, streaming=True, callbacks=[callback]
+        model_name=selected_model,
+        temperature=0,
+        streaming=True,
     )
 
     PROMPT = PromptTemplate(
         template=prompt_template,
-        input_variables=["context", "question"],
+        input_variables=["input", "context"],
     )
 
-    # Prepare the chain
-    qa = RetrievalQA.from_chain_type(
-        llm=llm,
-        chain_type="stuff",
-        retriever=retriever,
-        return_source_documents=True,
-        chain_type_kwargs={"prompt": PROMPT},
+    FORMATTING_PROMPT = PromptTemplate(
+        template="{page_content}\nSource:{file_path}, page {page}",
+        input_variables=["page_content", "file_path", "page"]
     )
+
+    combine_docs_chain = create_stuff_documents_chain(llm=llm, prompt=PROMPT, document_prompt=FORMATTING_PROMPT)
+
+    rag_chain = create_retrieval_chain(retriever, combine_docs_chain)
 
     if run_openai_query and query:
 
+        sources = []
+        answer = ""
+
         # Get the answer from the chain
-        res = qa.invoke({"query": query})
-        _, docs = res["result"], res["source_documents"]
+        for chunk in rag_chain.stream({"input":query}):
+            if context_chunk := chunk.get("context"):
+                sources = context_chunk
+            if answer_chunk := chunk.get("answer"):
+                answer += answer_chunk
+                answer_box.success(answer)
 
         # Print the sources
         st.divider()
         st.write("## Sources 📚")
 
         # Print each source document
-        for document in docs:
+        for document in sources:
             formatted_sourcename = document.metadata["source"].replace(
-                "source_documents/", ""
+                "documents/", ""
             )
             with st.expander(f"**Source:** {formatted_sourcename}"):
-                st.write(document.page_content)
+                st.markdown(document.page_content)
 
     else:
         st.info(

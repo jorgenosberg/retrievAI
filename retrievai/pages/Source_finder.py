@@ -110,7 +110,7 @@ def main():
         # Print each source document
         for index, document in enumerate(docs):
             formatted_sourcename = document.metadata["source"].replace(
-                "source_documents/", ""
+                "documents/", ""
             )
             with st.expander(
                 f"**{index+1}:** {formatted_sourcename}", expanded=expanded

@@ -163,4 +163,6 @@ cython_debug/
 .streamlit/secrets.toml
 documents/*
 .retrievai/db/*
-!.gitkeep
+
+.DS_Store
+/.idea

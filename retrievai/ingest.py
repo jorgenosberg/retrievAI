@@ -137,7 +137,7 @@ def process_documents(ignored_hashes: List[str] = []) -> List[Document]:
         exit(0)
 
     total_pages = len(documents)
-    logger.info(f"Loaded {total_pages} pages from {source_directory}")
+    logger.info(f"Loaded {total_pages} routes from {source_directory}")
 
     # Initialize MarkdownTextSplitter
     md_splitter = MarkdownHeaderTextSplitter(
@@ -149,11 +149,11 @@ def process_documents(ignored_hashes: List[str] = []) -> List[Document]:
     )
 
     # Process chunks with progress bar
-    logger.info("Splitting pages into chunks...")
+    logger.info("Splitting routes into chunks...")
 
     chunks = []
 
-    with tqdm(total=total_pages, desc="Splitting pages", unit="page", ncols=80, dynamic_ncols=True, leave=True) as pbar:
+    with tqdm(total=total_pages, desc="Splitting routes", unit="page", ncols=80, dynamic_ncols=True, leave=True) as pbar:
         for document in documents:
             document_chunks = md_splitter.split_text(document.page_content)
             final_chunks = text_splitter.split_documents(document_chunks)
@@ -163,7 +163,7 @@ def process_documents(ignored_hashes: List[str] = []) -> List[Document]:
             pbar.update()
 
     total_chunks = len(chunks)
-    logger.info(f"Split {total_pages} pages into {total_chunks} chunks of text (max. {chunk_size} tokens each).")
+    logger.info(f"Split {total_pages} routes into {total_chunks} chunks of text (max. {chunk_size} tokens each).")
 
     return chunks
 

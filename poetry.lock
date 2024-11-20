@@ -325,6 +325,20 @@ files = [
 ]
 
 [[package]]
+name = "captcha"
+version = "0.6.0"
+description = "A captcha library that generates audio and image CAPTCHAs."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "captcha-0.6.0-py3-none-any.whl", hash = "sha256:148b2475be00a067b6173b7796cdc2332dbcb6fd4bfced1055bc8f69846bc924"},
+    {file = "captcha-0.6.0.tar.gz", hash = "sha256:a5ead7679cd8477bc636524d54f50e092a4b6f3db4e52bb98a689593638d1772"},
+]
+
+[package.dependencies]
+Pillow = "*"
+
+[[package]]
 name = "certifi"
 version = "2024.8.30"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -867,6 +881,20 @@ files = [
     {file = "entrypoints-0.4-py3-none-any.whl", hash = "sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f"},
     {file = "entrypoints-0.4.tar.gz", hash = "sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4"},
 ]
+
+[[package]]
+name = "extra-streamlit-components"
+version = "0.1.71"
+description = "An all-in-one place, to find complex or just natively unavailable components on streamlit."
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "extra_streamlit_components-0.1.71-py3-none-any.whl", hash = "sha256:c8e6f98446adecd3002756362e50d0669693b7673afaa89cebfced6415cc6bd3"},
+    {file = "extra_streamlit_components-0.1.71.tar.gz", hash = "sha256:d18314cf2ed009f95641882b50aa3bdb11b6a0eb6403fb43dbc8af1722419617"},
+]
+
+[package.dependencies]
+streamlit = ">=1.18.0"
 
 [[package]]
 name = "faker"
@@ -2041,8 +2069,8 @@ jsonpatch = ">=1.33,<2.0"
 langsmith = ">=0.1.125,<0.2.0"
 packaging = ">=23.2,<25"
 pydantic = [
-    {version = ">=2.5.2,<3.0.0", markers = "python_full_version < \"3.12.4\""},
     {version = ">=2.7.4,<3.0.0", markers = "python_full_version >= \"3.12.4\""},
+    {version = ">=2.5.2,<3.0.0", markers = "python_full_version < \"3.12.4\""},
 ]
 PyYAML = ">=5.3"
 tenacity = ">=8.1.0,<8.4.0 || >8.4.0,<10.0.0"
@@ -2093,8 +2121,8 @@ files = [
 httpx = ">=0.23.0,<1"
 orjson = ">=3.9.14,<4.0.0"
 pydantic = [
-    {version = ">=1,<3", markers = "python_full_version < \"3.12.4\""},
     {version = ">=2.7.4,<3.0.0", markers = "python_full_version >= \"3.12.4\""},
+    {version = ">=1,<3", markers = "python_full_version < \"3.12.4\""},
 ]
 requests = ">=2,<3"
 requests-toolbelt = ">=1.0.0,<2.0.0"
@@ -3808,8 +3836,8 @@ files = [
 annotated-types = ">=0.6.0"
 pydantic-core = "2.23.4"
 typing-extensions = [
-    {version = ">=4.6.1", markers = "python_version < \"3.13\""},
     {version = ">=4.12.2", markers = "python_version >= \"3.13\""},
+    {version = ">=4.6.1", markers = "python_version < \"3.13\""},
 ]
 
 [package.extras]
@@ -3969,6 +3997,23 @@ files = [
 
 [package.extras]
 windows-terminal = ["colorama (>=0.4.6)"]
+
+[[package]]
+name = "pyjwt"
+version = "2.10.0"
+description = "JSON Web Token implementation in Python"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "PyJWT-2.10.0-py3-none-any.whl", hash = "sha256:543b77207db656de204372350926bed5a86201c4cbff159f623f79c7bb487a15"},
+    {file = "pyjwt-2.10.0.tar.gz", hash = "sha256:7628a7eb7938959ac1b26e819a1df0fd3259505627b575e4bad6d08f76db695c"},
+]
+
+[package.extras]
+crypto = ["cryptography (>=3.4.0)"]
+dev = ["coverage[toml] (==5.0.4)", "cryptography (>=3.4.0)", "pre-commit", "pytest (>=6.0.0,<7.0.0)", "sphinx", "sphinx-rtd-theme", "zope.interface"]
+docs = ["sphinx", "sphinx-rtd-theme", "zope.interface"]
+tests = ["coverage[toml] (==5.0.4)", "pytest (>=6.0.0,<7.0.0)"]
 
 [[package]]
 name = "pymdown-extensions"
@@ -4692,6 +4737,25 @@ watchdog = {version = ">=2.1.5,<7", markers = "platform_system != \"Darwin\""}
 
 [package.extras]
 snowflake = ["snowflake-connector-python (>=2.8.0)", "snowflake-snowpark-python[modin] (>=1.17.0)"]
+
+[[package]]
+name = "streamlit-authenticator"
+version = "0.4.1"
+description = "A secure authentication module to manage user access in a Streamlit application."
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "streamlit_authenticator-0.4.1-py3-none-any.whl", hash = "sha256:776136e6a6ecde1ecc9dda054a7492290199b81e19268abff307a7d508685942"},
+    {file = "streamlit_authenticator-0.4.1.tar.gz", hash = "sha256:d4afeec5c972d794052a5552aa570e7eb620f0cc183484a5b052304907268381"},
+]
+
+[package.dependencies]
+bcrypt = ">=3.1.7"
+captcha = ">=0.5.0"
+extra-streamlit-components = ">=0.1.70"
+PyJWT = ">=2.3.0"
+PyYAML = ">=5.3.1"
+streamlit = ">=1.37.0"
 
 [[package]]
 name = "streamlit-camera-input-live"
@@ -5716,4 +5780,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "c0e15f19989e82a2d62d8e3383a02d811ce19acc438a74f0c042679eca4ded61"
+content-hash = "16c4310ec3b0e7354b6cc78a2f9828028f39e8a81d9fe58996c8a1b286eb4aee"

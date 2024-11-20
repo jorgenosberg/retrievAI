@@ -9,10 +9,8 @@ import chromadb
 from glob import glob
 import streamlit as st
 from streamlit_extras.add_vertical_space import add_vertical_space
-from streamlit_extras.switch_page_button import switch_page
 
 # Load the environment variables
-PERSIST_DIRECTORY = st.secrets["PERSIST_DIRECTORY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 openai.api_key = OPENAI_API_KEY
 
@@ -25,59 +23,19 @@ prompt_template = """Use the following pieces of context to answer the question 
 
 Question: {input}:"""
 
-# Set page config
-st.set_page_config(
-    page_title="Home – ChatGPT for your documents",
-    page_icon="🤖",
-    initial_sidebar_state="expanded",
+
+# Prepare the embeddings and retriever
+embeddings = OpenAIEmbeddings(
+    model=st.session_state["embeddings"]["model"],
 )
-
-# Sidebar contents
-with st.sidebar:
-    model_list = [
-        "gpt-4o-mini",
-        "gpt-4o",
-        "gpt-4-turbo",
-        "gpt-4",
-        "gpt-3.5-turbo",
-    ]
-
-    if "selected_model" not in st.session_state:
-        st.session_state.selected_model = model_list[0]
-    if "chunks_to_retrieve" not in st.session_state:
-        st.session_state.chunks_to_retrieve = 10
-
-    st.write("## Settings 🔧")
-    st.session_state.selected_model = st.selectbox(
-        "Select OpenAI model",
-        model_list,
-        index=model_list.index(st.session_state.selected_model),
-    )
-    st.session_state.chunks_to_retrieve = st.slider(
-        "Select number of chunks to retrieve",
-        min_value=1,
-        max_value=20,
-        value=st.session_state.chunks_to_retrieve,
-    )
-    _, center_column, _ = st.columns([1, 3, 1])
-    with center_column:
-        st.write("*Made with ❤️by Jørgen*")
+client = chromadb.PersistentClient(path=st.session_state["vectorstore"]["directory"])
+db = Chroma(client=client, embedding_function=embeddings)
+retriever = db.as_retriever(search_kwargs={"k": st.session_state["retriever"]["k"]}, search_type=st.session_state["retriever"]["search_type"])
 
 
-def main():
-    st.header("Ask GPT about your documents 💬")
-
-    # Load settings from st.session_state if available
-    selected_model = st.session_state.selected_model.split()[0]
-    chunks_to_retrieve = st.session_state.chunks_to_retrieve
-
-    # Prepare the embeddings and retriever
-    embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small"
-    )
-    client = chromadb.PersistentClient(path=PERSIST_DIRECTORY)
-    db = Chroma(client=client, embedding_function=embeddings)
-    retriever = db.as_retriever(search_kwargs={"k": chunks_to_retrieve}, search_type="mmr")
+_, center_page, _ = st.columns([1,7,1], vertical_alignment="center")
+with center_page:
+    st.header("Chat with your documents")
 
     # Check if the persist_directory is empty except for .gitkeep
     db_content = db.get()["documents"]
@@ -104,11 +62,11 @@ def main():
         paths = list(map(lambda x: f"documents/{x}", selected_documents))
         document_filter = {"source": {"$in": paths}}
         retriever = db.as_retriever(
-            search_kwargs={"k": chunks_to_retrieve, "filter": document_filter}
+            search_kwargs={"k": st.session_state["vectorstore"]["k"], "filter": document_filter}
         )
 
     ### Prepare the LLM and QA chain ###
-    left_column, right_column = st.columns([7, 1])
+    left_column, right_column = st.columns([7, 1], vertical_alignment="center")
     with left_column:
         query = st.text_input("Ask any question using natural language:")
     with right_column:
@@ -122,9 +80,9 @@ def main():
     answer_box = st.empty()
 
     llm = ChatOpenAI(
-        model_name=selected_model,
-        temperature=0,
-        streaming=True,
+        model_name=st.session_state["chat"]["model"],
+        temperature=st.session_state["chat"]["temperature"],
+        streaming=st.session_state["chat"]["streaming"],
     )
 
     PROMPT = PromptTemplate(
@@ -165,24 +123,3 @@ def main():
             )
             with st.expander(f"**Source:** {formatted_sourcename}"):
                 st.markdown(document.page_content)
-
-    else:
-        st.info(
-            "Enter a question to get started!\nYou can ask any question you want in English"
-            + ", and the app will try to answer according to the information found in the documents you have "
-            + "uploaded.\n"
-            + "- LangChain optimizes your question slightly\n"
-            + "- The app runs a similarity search in the Chroma VectorStore to look for relevant chunks of text\n"
-            + "- If relevant sources are found, it then sends those chunks of text along with the optimized prompt to the LLM of your choice.\n"
-            + "- The LLM then generates an answer based on the prompt and the chunks of text and returns it as a real-time stream.\n\n"
-            f"*The currently selected model is **{selected_model}*** 🤖\n\n",
-            icon="ℹ️",
-        )
-        left_column, right_column = st.columns([2, 4])
-        with left_column:
-            if st.button("See documents 🗄", key="Documents"):
-                switch_page("Documents")
-
-
-if __name__ == "__main__":
-    main()

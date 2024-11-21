@@ -12,11 +12,11 @@ authenticator = stauth.Authenticate(
     config["cookie"]["name"],
     config["cookie"]["key"],
     config["cookie"]["expiry_days"],
-    auto_hash=False,
+    auto_hash=True,
 )
 
 # Pre-hashing all plain text passwords once
-stauth.Hasher.hash_passwords(config['credentials'])
+# stauth.Hasher.hash_passwords(config['credentials'])
 
 # Login form
 try:

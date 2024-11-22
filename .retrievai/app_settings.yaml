@@ -1,0 +1,17 @@
+chat:
+  available_models:
+  - gpt-4o-mini
+  - gpt-4
+  - gpt-3.5-turbo
+  model: gpt-4o-mini
+  streaming: true
+  temperature: 0.0
+embeddings:
+  chunk_overlap: 200
+  chunk_size: 1200
+  model: text-embedding-3-small
+vectorstore:
+  directory: .retrievai/db
+  fetch_k: 20
+  k: 10
+  search_type: mmr

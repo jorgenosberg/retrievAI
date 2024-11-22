@@ -162,7 +162,8 @@ cython_debug/
 #.idea/
 .streamlit/secrets.toml
 documents/*
-.retrievai
+.retrievai/auth_config.yaml
+.retrievai/db
 
 .DS_Store
 /.idea

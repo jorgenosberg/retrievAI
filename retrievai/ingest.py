@@ -25,13 +25,16 @@ from langchain_community.document_loaders import (
 from retrievai.utils.pymupdf4llm_loaders import PyMuPDF4LLMLoader
 import logging
 
+from retrievai.utils.settings_tools import load_session_state
 from retrievai.utils.vectorstore_tools import get_vectorstore, create_vectorstore_from_documents
 
+load_session_state()
+
 # Load environment variables
-persist_directory = Path(st.secrets["PERSIST_DIRECTORY"])
-source_directory = Path(st.secrets["SOURCE_DIRECTORY"])
-chunk_size = st.secrets["CHUNK_SIZE"]
-chunk_overlap = st.secrets["CHUNK_OVERLAP"]
+persist_directory = Path(st.session_state["vectorstore"]["directory"])
+source_directory = Path("documents")
+chunk_size = st.session_state["embeddings"]["chunk_size"]
+chunk_overlap = st.session_state["embeddings"]["chunk_overlap"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 openai.api_key = OPENAI_API_KEY
 

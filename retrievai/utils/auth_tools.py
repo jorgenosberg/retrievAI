@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import streamlit_authenticator as stauth
 import streamlit as st
 
@@ -6,9 +8,18 @@ def get_authenticator():
     if "authenticator" in st.session_state:
         return st.session_state["authenticator"]
 
+    config_file = Path(".retrievai/auth_config.yaml")
+    if not config_file.exists():
+        if not config_file.parent.exists():
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.touch(exist_ok=True)
+
     # Set up the authenticator
     authenticator = stauth.Authenticate(
-        credentials=".retrievai/auth_config.yaml",
+        credentials=config_file.as_posix(),
+        cookie_name="retrievai_auth",
+        cookie_key="retrievai_auth",
+        cookie_expiry_days=7.0,
         auto_hash=True,
     )
 

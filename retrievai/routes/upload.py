@@ -8,13 +8,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHea
 from retrievai.utils.settings_tools import load_session_state
 from retrievai.utils.vectorstore_tools import get_vectorstore, create_vectorstore_from_documents
 
+load_session_state()
+
 # Define directories
 documents_directory = Path("documents")
 settings_directory = Path(".retrievai")
 hashes_file = settings_directory / "file_hashes.txt"
 persist_directory = Path(st.session_state["vectorstore"]["directory"])
-
-load_session_state()
 
 # Helper function to compute file hash
 def compute_file_hash(file) -> str:
@@ -38,22 +38,31 @@ def save_file_hash(file_hash: str):
         f.write(file_hash + "\n")
 
 # Save uploaded files to the documents directory
-def save_file_to_documents(file, file_hash: str):
+def save_uploaded_files(files, existing_hashes, sub_progress_bar):
     documents_directory.mkdir(parents=True, exist_ok=True)
-    file_path = documents_directory / file.name
-    with open(file_path, "wb") as f:
-        f.write(file.read())
-    save_file_hash(file_hash)
-    return file_path
+    new_files_saved = 0
+    total_files = len(files)
+
+    for i, file in enumerate(files, start=1):
+        file_hash = compute_file_hash(file)
+        if file_hash in existing_hashes:
+            continue
+
+        file_path = documents_directory / file.name
+        with open(file_path, "wb") as f:
+            f.write(file.read())
+        save_file_hash(file_hash)
+
+        new_files_saved += 1
+        sub_progress_bar.progress(i / total_files, text=f"Saving file {i}/{total_files}...")
+
+    return new_files_saved
 
 # Split documents into chunks
-def split_documents(documents, chunk_size, chunk_overlap):
-    st.info("Splitting documents into chunks...")
-    progress_bar = st.progress(0)
+def split_documents(documents, chunk_size, chunk_overlap, sub_progress_bar):
     total_docs = len(documents)
     chunks = []
 
-    # Split documents
     md_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=[("#", "Header 1"), ("##", "Header 2"), ("###", "Header 3")],
         strip_headers=False,
@@ -66,63 +75,47 @@ def split_documents(documents, chunk_size, chunk_overlap):
         for chunk in final_chunks:
             combined_metadata = {**document.metadata, **chunk.metadata}
             chunks.append(Document(page_content=chunk.page_content, metadata=combined_metadata))
-        progress_bar.progress(i / total_docs)
+        sub_progress_bar.progress(i / total_docs, text=f"Splitting document {i}/{total_docs}...")
 
-    st.success(f"Split {total_docs} documents into {len(chunks)} chunks.")
     return chunks
 
 # Ingest documents with progress tracking
-def ingest_documents(source_dir: Path, ignored_hashes: set):
-    st.info("Starting document ingestion process...")
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
+def ingest_documents(source_dir: Path, ignored_hashes: set, sub_progress_bar, main_progress_bar):
     all_files = list(source_dir.rglob("*"))
     total_files = len(all_files)
     documents = []
 
-    if not all_files:
-        st.error("No files to ingest.")
-        return
+    main_progress_bar.progress(0.5, text="Step 2/4: Loading and processing documents...")
 
-    # Load documents
-    st.info("Loading documents...")
     for i, file_path in enumerate(all_files, start=1):
         file_hash = compute_file_hash(open(file_path, "rb"))
         if file_hash in ignored_hashes:
-            st.info(f"Skipping already ingested file: {file_path.name}")
             continue
+
         docs = safe_load_single_document(file_path)
         if docs:
             documents.extend(docs)
-        progress_bar.progress(i / total_files)
+        sub_progress_bar.progress(i / total_files, text=f"Processing file {i}/{total_files}...")
 
     if not documents:
-        st.warning("No new documents to process.")
-        return
+        return []
 
-    # Split documents into chunks
-    chunk_size = st.secrets["CHUNK_SIZE"]
-    chunk_overlap = st.secrets["CHUNK_OVERLAP"]
-    chunks = split_documents(documents, chunk_size, chunk_overlap)
+    main_progress_bar.progress(0.75, text="Step 3/4: Splitting documents into chunks...")
+    chunk_size = st.session_state["embeddings"]["chunk_size"]
+    chunk_overlap = st.session_state["embeddings"]["chunk_overlap"]
+    chunks = split_documents(documents, chunk_size, chunk_overlap, sub_progress_bar)
 
-    # Add chunks to vectorstore
-    st.info("Adding chunks to vectorstore...")
+    main_progress_bar.progress(1.0, text="Step 4/4: Adding chunks to vectorstore...")
     if (persist_directory / "chroma.sqlite3").exists():
-        st.info("Appending to existing vectorstore...")
         db = get_vectorstore()
         db.add_documents(chunks)
     else:
-        st.info("Creating new vectorstore...")
         create_vectorstore_from_documents(chunks)
 
-    st.success(f"Ingested {len(chunks)} chunks into the vectorstore.")
+    return chunks
 
 # Streamlit App Layout
 st.header("Document Ingestion")
-
-# Load existing file hashes
-existing_hashes = load_existing_hashes()
 
 # File upload section
 uploaded_files = st.file_uploader(
@@ -134,20 +127,22 @@ uploaded_files = st.file_uploader(
 
 # Trigger ingestion
 if st.button("Start Ingestion"):
-    new_files_saved = 0
+    # Placeholders for progress bars
+    progress_placeholder = st.container()
+    with progress_placeholder:
+        main_progress_bar = st.progress(0, text="Step 1/4: Initializing...")
+        sub_progress_bar = st.progress(0)
 
-    # Save files and compute new hashes
-    for file in uploaded_files:
-        file_hash = compute_file_hash(file)
-        if file_hash in existing_hashes:
-            st.info(f"Skipping already saved file: {file.name}")
-            continue
-        save_file_to_documents(file, file_hash)
-        st.success(f"Saved {file.name} to the documents folder!")
-        new_files_saved += 1
+    # Load existing file hashes
+    existing_hashes = load_existing_hashes()
+
+    main_progress_bar.progress(0.25, text="Step 1/4: Saving uploaded files...")
+    new_files_saved = save_uploaded_files(uploaded_files, existing_hashes, sub_progress_bar)
 
     if new_files_saved > 0:
-        st.info(f"Saved {new_files_saved} new files. Starting ingestion...")
-        ingest_documents(documents_directory, existing_hashes)
+        new_chunks = ingest_documents(documents_directory, existing_hashes, sub_progress_bar, main_progress_bar)
+        main_progress_bar.empty()
+        sub_progress_bar.empty()
+        st.success(f"Successfully ingested {new_files_saved} files ({len(new_chunks)} chunks).")
     else:
         st.warning("No new files to process.")

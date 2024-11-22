@@ -10,7 +10,6 @@ from pathlib import Path
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
 from tqdm import tqdm
-import chromadb
 
 from langchain_community.document_loaders import (
     CSVLoader,
@@ -24,9 +23,9 @@ from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 from retrievai.utils.pymupdf4llm_loaders import PyMuPDF4LLMLoader
-from langchain_community.vectorstores.chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
 import logging
+
+from retrievai.utils.vectorstore_tools import get_vectorstore, create_vectorstore_from_documents
 
 # Load environment variables
 persist_directory = Path(st.secrets["PERSIST_DIRECTORY"])
@@ -171,15 +170,9 @@ def process_documents(ignored_hashes: List[str] = []) -> List[Document]:
 def main():
     logger.info("Starting document ingestion...")
 
-    # Create embeddings
-    embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small"
-    )
-
     if does_vectorstore_exist(persist_directory):
         logger.info(f"Appending to existing vectorstore at {persist_directory}")
-        client = chromadb.PersistentClient(path=persist_directory.as_posix())
-        db = Chroma(client=client, embedding_function=embeddings)
+        db = get_vectorstore()
         collection = db.get()
         existing_hashes = [metadata["file_hash"] for metadata in collection["metadatas"]]
         texts = process_documents(existing_hashes)
@@ -189,8 +182,7 @@ def main():
         logger.info("Creating new vectorstore")
         texts = process_documents()
         logger.info("Creating embeddings. This may take some time...")
-        client = chromadb.PersistentClient(path=persist_directory.as_posix())
-        Chroma.from_documents(client=client, documents=texts, embedding=embeddings)
+        create_vectorstore_from_documents(texts)
 
     logger.info("Ingestion complete!")
     logger.info(

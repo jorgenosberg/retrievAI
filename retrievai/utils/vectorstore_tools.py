@@ -12,6 +12,15 @@ def get_vectorstore():
     db = Chroma(embedding_function=embeddings, persist_directory=st.session_state["vectorstore"]["directory"])
     return db
 
+def create_vectorstore_from_documents(documents):
+    embeddings = OpenAIEmbeddings(model=st.session_state["embeddings"]["model"])
+    db = Chroma.from_documents(
+        documents=documents,
+        embedding=embeddings,
+        persist_directory=st.session_state["vectorstore"]["directory"],
+    )
+    return db
+
 def get_retriever(document_filter: dict = None):
     db = get_vectorstore()
     search_kwargs = {

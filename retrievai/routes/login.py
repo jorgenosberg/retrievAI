@@ -1,22 +1,9 @@
-# Load credentials from the YAML file
-import yaml
-import streamlit_authenticator as stauth
+
 import streamlit as st
 
-with open(".retrievai/auth_config.yaml") as file:
-    config = yaml.safe_load(file)
+from retrievai.utils.auth_tools import get_authenticator
 
-# Set up the authenticator
-authenticator = stauth.Authenticate(
-    config["credentials"],
-    config["cookie"]["name"],
-    config["cookie"]["key"],
-    config["cookie"]["expiry_days"],
-    auto_hash=True,
-)
-
-# Pre-hashing all plain text passwords once
-# stauth.Hasher.hash_passwords(config['credentials'])
+authenticator = get_authenticator()
 
 # Login form
 try:
@@ -28,3 +15,11 @@ if st.session_state['authentication_status']:
     st.success("Successfully logged into RetrievAI! We're redirecting you now...")
 elif st.session_state['authentication_status'] is False:
     st.error('Username/password is incorrect')
+
+col1, col2, _ = st.columns([1, 1, 3])
+with col1:
+    st.page_link("routes/register.py", label="Register new account", icon=":material/person_add:",
+                 use_container_width=True)
+with col2:
+    st.page_link("routes/forgot_password.py", label="Forgot password?", icon=":material/password:",
+                 use_container_width=True)

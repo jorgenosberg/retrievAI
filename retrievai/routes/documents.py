@@ -1,19 +1,9 @@
 import streamlit as st
 from glob import glob
-from streamlit_extras.add_vertical_space import add_vertical_space
 import base64
 
 if "selected_file" not in st.session_state:
     st.session_state.selected_file = None
-
-# Sidebar contents
-with st.sidebar:
-    st.info(
-        "This page shows all the documents you have added to the **documents** folder. If you would like to add more documents to the Chroma database, simply add additional documents to the folder and run the **ingest.py** script again. \n\nTo ask a new question, go to the **Home** page."
-    )
-    _, center_column, _ = st.columns([1, 3, 1])
-    with center_column:
-        st.write("*Made with *❤️* by Jørgen*")
 
 st.header("Browse your documents")
 

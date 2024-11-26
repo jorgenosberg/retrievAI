@@ -20,6 +20,7 @@ from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 
+from pdfminer.psexceptions import PSSyntaxError
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores.chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
@@ -75,13 +76,16 @@ LOADER_MAPPING = {
     # Add more mappings for other file extensions and loaders as needed
 }
 
-
 def load_single_document(file_path: str) -> Document:
     ext = "." + file_path.rsplit(".", 1)[-1]
     if ext in LOADER_MAPPING:
         loader_class, loader_args = LOADER_MAPPING[ext]
         loader = loader_class(file_path, **loader_args)
-        return loader.load()[0]
+        try:
+            return loader.load()[0]
+        except PSSyntaxError as e:
+            print(f"Error processing {file_path}: {e}")
+            return None
 
     raise ValueError(f"Unsupported file extension '{ext}'")
 

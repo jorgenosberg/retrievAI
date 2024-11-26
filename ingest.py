@@ -146,14 +146,13 @@ def does_vectorstore_exist(persist_directory: str) -> bool:
 def main():
     # Create embeddings
     embeddings = OpenAIEmbeddings()
-    client = chromadb.PersistentClient(path=persist_directory)
 
     if does_vectorstore_exist(persist_directory):
         # Update and store locally vectorstore
         print(f"Appending to existing vectorstore at {persist_directory}")
+        client = chromadb.PersistentClient(path=persist_directory)
         db = Chroma(client=client, embedding_function=embeddings)
         collection = db.get()
-
         texts = process_documents(
             [metadata["source"] for metadata in collection["metadatas"]]
         )
@@ -164,13 +163,13 @@ def main():
         print("Creating new vectorstore")
         texts = process_documents()
         print(f"Creating embeddings. May take some minutes...")
+        client = chromadb.PersistentClient(path=persist_directory)
         db = Chroma.from_documents(client=client, documents=texts, embedding=embeddings)
     db = None
 
     print(
         f"Ingestion complete! You can now run `streamlit run Home.py` to start chatting with your documents"
     )
-
 
 if __name__ == "__main__":
     main()

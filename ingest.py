@@ -81,7 +81,11 @@ def load_single_document(file_path: str) -> Document:
     if ext in LOADER_MAPPING:
         loader_class, loader_args = LOADER_MAPPING[ext]
         loader = loader_class(file_path, **loader_args)
-        return loader.load()[0]
+        try:
+            return loader.load()[0]
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
+            return None
 
     raise ValueError(f"Unsupported file extension '{ext}'")
 
@@ -107,8 +111,9 @@ def load_documents(source_dir: str, ignored_files: List[str] = []) -> List[Docum
             for i, doc in enumerate(
                 pool.imap_unordered(load_single_document, filtered_files)
             ):
-                results.append(doc)
-                pbar.update()
+                if(doc is not None):
+                    results.append(doc)
+                    pbar.update()
 
     return results
 
@@ -165,7 +170,6 @@ def main():
     print(
         f"Ingestion complete! You can now run `streamlit run Home.py` to start chatting with your documents"
     )
-
 
 if __name__ == "__main__":
     main()

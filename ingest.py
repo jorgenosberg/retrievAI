@@ -20,7 +20,6 @@ from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 
-from pdfminer.psexceptions import PSSyntaxError
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores.chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
@@ -76,6 +75,7 @@ LOADER_MAPPING = {
     # Add more mappings for other file extensions and loaders as needed
 }
 
+
 def load_single_document(file_path: str) -> Document:
     ext = "." + file_path.rsplit(".", 1)[-1]
     if ext in LOADER_MAPPING:
@@ -83,7 +83,7 @@ def load_single_document(file_path: str) -> Document:
         loader = loader_class(file_path, **loader_args)
         try:
             return loader.load()[0]
-        except PSSyntaxError as e:
+        except Exception as e:
             print(f"Error processing {file_path}: {e}")
             return None
 
@@ -111,8 +111,9 @@ def load_documents(source_dir: str, ignored_files: List[str] = []) -> List[Docum
             for i, doc in enumerate(
                 pool.imap_unordered(load_single_document, filtered_files)
             ):
-                results.append(doc)
-                pbar.update()
+                if(doc is not None):
+                    results.append(doc)
+                    pbar.update()
 
     return results
 
@@ -145,13 +146,14 @@ def does_vectorstore_exist(persist_directory: str) -> bool:
 def main():
     # Create embeddings
     embeddings = OpenAIEmbeddings()
+    client = chromadb.PersistentClient(path=persist_directory)
 
     if does_vectorstore_exist(persist_directory):
         # Update and store locally vectorstore
         print(f"Appending to existing vectorstore at {persist_directory}")
-        client = chromadb.PersistentClient(path=persist_directory)
         db = Chroma(client=client, embedding_function=embeddings)
         collection = db.get()
+
         texts = process_documents(
             [metadata["source"] for metadata in collection["metadatas"]]
         )
@@ -162,7 +164,6 @@ def main():
         print("Creating new vectorstore")
         texts = process_documents()
         print(f"Creating embeddings. May take some minutes...")
-        client = chromadb.PersistentClient(path=persist_directory)
         db = Chroma.from_documents(client=client, documents=texts, embedding=embeddings)
     db = None
 

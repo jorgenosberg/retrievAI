@@ -1,3 +1,6 @@
+from os import PathLike
+from pathlib import Path
+
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 import streamlit as st
@@ -5,6 +8,13 @@ import openai
 
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 openai.api_key = OPENAI_API_KEY
+
+def does_vectorstore_exist(persist_dir: str | PathLike) -> bool:
+    """
+    Check if vectorstore exists.
+    """
+    persist_dir = Path(persist_dir)
+    return (persist_dir / "chroma.sqlite3").exists()
 
 
 def get_vectorstore():

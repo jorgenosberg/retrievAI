@@ -38,7 +38,7 @@ if auth_status:
     except Exception as e:
         st.error(e)
     pg = st.navigation({
-        "Chat": [chat_page, documents_page, source_finder_page, upload_page],
+        "Chat": [chat_page, source_finder_page, documents_page, upload_page],
         "User": [profile_page, settings_page],
         "Help": [bug_report_page],
     })

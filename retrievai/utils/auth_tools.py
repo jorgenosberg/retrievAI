@@ -14,11 +14,25 @@ def get_authenticator():
             config_file.parent.mkdir(parents=True, exist_ok=True)
         config_file.touch(exist_ok=True)
 
+        default_structure = {
+            "credentials": {
+                "usernames": {
+                    "admin": "admin",
+                    "user": "user",
+                }
+            },
+            "cookie": {
+                "name": "retrievai_auth",
+                "key": "retrievai_auth_cookie",
+                "expiry_days": 7.0,
+            },
+        }
+
     # Set up the authenticator
     authenticator = stauth.Authenticate(
         credentials=config_file.as_posix(),
         cookie_name="retrievai_auth",
-        cookie_key="retrievai_auth",
+        cookie_key="retrievai_auth_cookie",
         cookie_expiry_days=7.0,
         auto_hash=True,
     )

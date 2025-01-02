@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "retrievAI"
+version = "0.1.0"
+description = ""
+authors = ["Jørgen Andresen Osberg <jorgen.osberg@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+langchain = "^0.3.7"
+langchain-openai = "^0.2.8"
+langchain-community = "^0.3.7"
+chromadb = "^0.5.18"
+streamlit = "^1.40.1"
+streamlit-extras = "^0.5.0"
+streamlit-pills = "^0.3.0"
+openai = "^1.54.4"
+tqdm = "^4.67.0"
+pymupdf = "^1.24.13"
+pymupdf4llm = "^0.0.17"
+langchain-chroma = "^0.1.4"
+watchdog = "^6.0.0"
+ocrmypdf = "^16.6.2"
+wordsegment = "^1.3.1"
+nltk = "^3.9.1"
+streamlit-authenticator = "^0.4.1"
+
+[tool.poetry.scripts]
+ingest = "retrievai.ingest:main"
+app = "retrievai.run_app:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

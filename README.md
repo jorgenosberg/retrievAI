@@ -4,7 +4,7 @@ RetrievAI is a simple Streamlit application that uses Retrieval-Augmented-Genera
 
 ## 📸 Screenshots
 
-![Home Page](assets/screenshot_home.png)
+![Home Page](retrievai/assets/screenshot_home.png)
 
 ## 📦 Packages used
 
@@ -65,7 +65,7 @@ python ingest.py
 Finally, run the Streamlit app.
 
 ```bash
-streamlit run Home.py
+streamlit run chat.py
 ```
 
 Your app should now be running on `http://localhost:8501`, and you can interact with it through your web browser.

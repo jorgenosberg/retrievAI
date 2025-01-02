@@ -7,9 +7,16 @@ chat:
   streaming: true
   temperature: 0.0
 embeddings:
+  available_models:
+  - text-embedding-3-small
+  - text-embedding-3-large
+  - text-embedding-ada-002
+  batch_mode: true
   chunk_overlap: 200
   chunk_size: 1200
-  model: text-embedding-3-small
+  min_chunk_size: 700
+  model: text-embedding-3-large
+  tmp_directory: .retrievai/tmp
 vectorstore:
   directory: .retrievai/db
   fetch_k: 20

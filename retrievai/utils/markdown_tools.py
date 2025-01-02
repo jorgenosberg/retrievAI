@@ -5,6 +5,21 @@ def normalize_markdown(md_text: str) -> str:
     """
     Normalize Markdown content while preserving its structure.
     """
+    # Protect URLs (including those without http/https)
+    urls = re.findall(r'(https?://\S+|http://\S+|www\.\S+)', md_text)
+    for i, url in enumerate(urls):
+        md_text = md_text.replace(url, f"__URL_PLACEHOLDER_{i}__")
+
+    # Protect Markdown links
+    links = re.findall(r'\[[^]]+]\([^)]+\)', md_text)
+    for i, link in enumerate(links):
+        md_text = md_text.replace(link, f"__LINK_PLACEHOLDER_{i}__")
+
+    # Protect emails
+    emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', md_text)
+    for i, email in enumerate(emails):
+        md_text = md_text.replace(email, f"__EMAIL_PLACEHOLDER_{i}__")
+
     # Remove excessive newlines, keeping one newline between blocks
     md_text = re.sub(r'\n\s*\n', '\n\n', md_text.strip())
 
@@ -37,5 +52,17 @@ def normalize_markdown(md_text: str) -> str:
 
     # Remove trailing spaces on each line
     md_text = re.sub(r'[ \t]+$', '', md_text, flags=re.M)
+
+    # Restore URLs
+    for i, url in enumerate(urls):
+        md_text = md_text.replace(f"__URL_PLACEHOLDER_{i}__", url)
+
+    # Restore Markdown links
+    for i, link in enumerate(links):
+        md_text = md_text.replace(f"__LINK_PLACEHOLDER_{i}__", link)
+
+    # Restore emails
+    for i, email in enumerate(emails):
+        md_text = md_text.replace(f"__EMAIL_PLACEHOLDER_{i}__", email)
 
     return md_text

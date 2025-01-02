@@ -26,9 +26,10 @@ with st.form("Settings"):
     add_vertical_space(1)
 
     st.subheader("Embeddings Model")
-    embeddings_model = st.text_input(
+    embeddings_model = st.selectbox(
         "Model",
-        value=st.session_state.get("embeddings", {}).get("model", ""),
+        st.session_state.get("embeddings", {}).get("available_models", []),
+        index=st.session_state.get("embeddings", {}).get("available_models", []).index(st.session_state.get("embeddings", {}).get("model", "")),
     )
     chunk_size = st.number_input(
         "Chunk Size",

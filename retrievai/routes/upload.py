@@ -17,7 +17,6 @@ class ImprovedRateLimiter(BaseRateLimiter):
 # Initialize session state
 load_session_state()
 
-
 # Streamlit App Layout
 st.header("Document Ingestion")
 
@@ -38,11 +37,9 @@ if st.button("Start Ingestion"):
         main_progress_bar = st.progress(0, text="Step 1/4: Initializing...")
         sub_progress_bar = st.progress(0)
 
-    # Load existing file hashes
-    existing_hashes = load_existing_hashes()
-
     main_progress_bar.progress(0.25, text="Step 1/4: Processing uploaded files...")
-    documents = process_uploaded_files(uploaded_files, existing_hashes, sub_progress_bar)
+
+    documents = process_uploaded_files(uploaded_files, sub_progress_bar)
 
     if documents:
         new_chunks = ingest_documents(documents, sub_progress_bar, main_progress_bar)
@@ -51,5 +48,12 @@ if st.button("Start Ingestion"):
         st.success(f"Successfully ingested {len(uploaded_files)} files ({len(new_chunks)} chunks).")
     else:
         st.warning("No new files to process.")
-        main_progress_bar = None
-        sub_progress_bar = None
+        main_progress_bar.empty()
+        sub_progress_bar.empty()
+
+st.divider()
+
+# Total files ingested
+st.subheader("Total Files Ingested")
+hashes = load_existing_hashes()
+st.write(f"Total files ingested: {len(hashes)}")

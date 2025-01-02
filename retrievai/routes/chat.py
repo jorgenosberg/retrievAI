@@ -1,4 +1,6 @@
 from glob import glob
+from pathlib import Path
+
 import streamlit as st
 
 from retrievai.utils.auth_tools import get_authenticator
@@ -62,9 +64,7 @@ if query:
 
     # Print each source document
     for document in sources:
-        formatted_sourcename = document.metadata["source"].replace(
-            "documents/", ""
-        )
+        formatted_sourcename = Path(document.metadata["source"]).name
         formatted_page_number = f"p. {document.metadata["page"]} / {document.metadata["total_pages"]}"
         with st.expander(f"{formatted_sourcename}, **{formatted_page_number}**"):
             if document.metadata["is_ocr"]:

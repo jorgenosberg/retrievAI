@@ -1,14 +1,17 @@
 import hashlib
 import logging
+from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from typing import List
+import tempfile
 
 import openai
 from langchain_core.documents import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-from retrievai.utils.vectorstore_tools import create_vectorstore_from_documents, get_vectorstore
+from retrievai.utils.vectorstore_tools import create_vectorstore_from_documents, get_vectorstore, does_vectorstore_exist
 import streamlit as st
 
 from langchain_community.document_loaders import (
@@ -26,6 +29,7 @@ from retrievai.utils.pymupdf4llm_loaders import PyMuPDF4LLMLoader
 
 # Load environment variables
 persist_directory = Path(st.session_state["vectorstore"]["directory"])
+tmp_directory = Path(st.session_state["embeddings"]["tmp_directory"])
 chunk_size = st.session_state["embeddings"]["chunk_size"]
 chunk_overlap = st.session_state["embeddings"]["chunk_overlap"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
@@ -56,13 +60,9 @@ LOADER_MAPPING = {
 }
 
 # Helper function to compute file hash
-def compute_file_hash(file) -> str:
-    hasher = hashlib.md5()
-    file.seek(0)  # Ensure the file pointer is at the start
-    for chunk in iter(lambda: file.read(4096), b""):
-        hasher.update(chunk)
-    file.seek(0)  # Reset file pointer after reading
-    return hasher.hexdigest()
+def compute_file_hash(filename: str, identifier: str) -> str:
+    hash_input = f"{filename}-{identifier}"
+    return hashlib.md5(hash_input.encode('utf-8')).hexdigest()
 
 # Load existing file hashes
 def load_existing_hashes() -> set:
@@ -79,43 +79,82 @@ def save_file_hash(file_hash: str):
 
 
 
-def safe_load_single_document(file_path: str | PathLike) -> List[Document] | None:
+
+def add_hash_to_chunks(documents: List[Document], file_hash: str) -> List[Document]:
+    """
+    Add the file hash to the metadata of each document's chunks.
+    """
+    for document in documents:
+        document.metadata["file_hash"] = file_hash
+    return documents
+
+def safe_load_single_document(file_path: str | PathLike, ext: str) -> List[Document] | None:
     """
     Safely load a single document, logging errors for failed files.
     """
     file_path = Path(file_path)
-    ext = file_path.suffix
+    filename = file_path.name
+
     if ext in LOADER_MAPPING:
         loader_class, loader_args = LOADER_MAPPING[ext]
         try:
-            loader = loader_class(str(file_path), **loader_args)
+            loader = loader_class(file_path.as_posix(), **loader_args)
             return loader.load()
         except Exception as e:
-            logger.error(f"Failed to load document {file_path}: {e}")
+            logger.error(f"Failed to load document {filename}: {e}")
             return None
     else:
-        logger.warning(f"Unsupported file type for {file_path}")
+        logger.warning(f"Unsupported file type for {filename}")
         return None
 
-
-
 # Process uploaded files directly without saving them
-def process_uploaded_files(files, existing_hashes, sub_progress_bar):
+def process_uploaded_files(files:  list[UploadedFile] | None | UploadedFile, sub_progress_bar) -> List[Document]:
     total_files = len(files)
     documents = []
+    existing_hashes = load_existing_hashes()
+
+    if not files:
+        logger.warning(f"No files uploaded.")
+        return documents
+
+    if not isinstance(files, list):
+        files = [files]
 
     for i, file in enumerate(files, start=1):
-        file_hash = compute_file_hash(file)
+        timestamp = datetime.now().isoformat()
+        file_hash = compute_file_hash(file.name, timestamp)
+        file_extension = Path(file.name).suffix
+        original_name = Path(file.name).name
+
         if file_hash in existing_hashes:
+            logger.info(f"Skipping file {file.name} as it has already been processed.")
             continue
 
-        file_content = file.read()
-        file.seek(0)  # Reset file pointer after reading
-        docs = safe_load_single_document(file_content)  # Adapt to work with raw content
-        if docs:
-            documents.extend(docs)
 
-        sub_progress_bar.progress(i / total_files, text=f"Processing file {i}/{total_files}...")
+        with tempfile.NamedTemporaryFile(delete=False, dir=tmp_directory, suffix=file_extension) as temp_file:
+            temp_file.write(file.getvalue())
+            temp_file.flush()
+            temp_file.seek(0)
+            temp_file_path = Path(temp_file.name)
+
+        # Rename the tempfile to include the original filename
+        renamed_file_path = temp_file_path.parent / original_name
+        temp_file_path.rename(renamed_file_path)
+
+        try:
+            docs = safe_load_single_document(renamed_file_path, file_extension)  # Adapt to work with raw content
+
+            if docs:
+                docs = add_hash_to_chunks(docs, file_hash)
+                documents.extend(docs)
+                save_file_hash(file_hash)
+
+        except Exception as e:
+            logger.error(f"Failed to process file {file.name}: {e}")
+        finally:
+            # Ensure the temporary file is deleted
+            renamed_file_path.unlink(missing_ok=True)
+            sub_progress_bar.progress(i / total_files, text=f"Processing file {i}/{total_files}...")
 
     return documents
 
@@ -146,87 +185,15 @@ def ingest_documents(documents, sub_progress_bar, main_progress_bar):
         return []
 
     main_progress_bar.progress(0.75, text="Step 3/4: Splitting documents into chunks...")
-    chunk_size = st.session_state["embeddings"]["chunk_size"]
-    chunk_overlap = st.session_state["embeddings"]["chunk_overlap"]
+
     chunks = split_documents(documents, chunk_size, chunk_overlap, sub_progress_bar)
 
     main_progress_bar.progress(1.0, text="Step 4/4: Adding chunks to vectorstore...")
-    if (persist_directory / "chroma.sqlite3").exists():
+
+    if does_vectorstore_exist(persist_directory):
         db = get_vectorstore()
         db.add_documents(chunks)
     else:
         create_vectorstore_from_documents(chunks)
 
     return chunks
-
-#
-# def load_documents(source_dir: str | PathLike, ignored_hashes: List[str] = []) -> List[Document]:
-#     """
-#     Load all documents from the source directory, ignoring duplicates.
-#     """
-#     source_dir = Path(source_dir)
-#     all_files = []
-#     for ext in LOADER_MAPPING:
-#         all_files.extend(
-#             source_dir.rglob(f"**/*{ext}")
-#         )
-#     filtered_files = [
-#         file_path for file_path in all_files
-#         if compute_file_hash(file_path) not in ignored_hashes
-#     ]
-#
-#     results = []
-#     total_files = len(filtered_files)
-#     logger.info(f"Found {total_files} new files to process.")
-#
-#     with tqdm(total=total_files, desc="Loading documents", unit="file", ncols=80, dynamic_ncols=True,
-#               leave=True) as pbar:
-#         with Pool(processes=os.cpu_count()) as pool:
-#             for docs in pool.imap_unordered(safe_load_single_document, filtered_files):
-#                 if docs:
-#                     results.extend(docs)
-#                 pbar.update()
-#     return results
-#
-#
-# def process_documents(ignored_hashes: List[str] = []) -> List[Document]:
-#     """
-#     Load documents and split them into chunks.
-#     """
-#     logger.info(f"Loading documents from {source_directory}")
-#     documents = load_documents(source_directory, ignored_hashes)
-#
-#     if not documents:
-#         logger.info("No new documents to load.")
-#         exit(0)
-#
-#     total_pages = len(documents)
-#     logger.info(f"Loaded {total_pages} routes from {source_directory}")
-#
-#     # Initialize MarkdownTextSplitter
-#     md_splitter = MarkdownHeaderTextSplitter(
-#         headers_to_split_on=[("#", "Header 1"), ("##", "Header 2"), ("###", "Header 3")],
-#         strip_headers=False,
-#     )
-#     text_splitter = RecursiveCharacterTextSplitter(
-#         chunk_size=chunk_size, chunk_overlap=chunk_overlap,
-#     )
-#
-#     # Process chunks with progress bar
-#     logger.info("Splitting routes into chunks...")
-#
-#     chunks = []
-#
-#     with tqdm(total=total_pages, desc="Splitting routes", unit="page", ncols=80, dynamic_ncols=True, leave=True) as pbar:
-#         for document in documents:
-#             document_chunks = md_splitter.split_text(document.page_content)
-#             final_chunks = text_splitter.split_documents(document_chunks)
-#             for chunk in final_chunks:
-#                 combined_metadata = {**document.metadata, **chunk.metadata}
-#                 chunks.append(Document(page_content=chunk.page_content, metadata=combined_metadata))
-#             pbar.update()
-#
-#     total_chunks = len(chunks)
-#     logger.info(f"Split {total_pages} routes into {total_chunks} chunks of text (max. {chunk_size} tokens each).")
-#
-#     return chunks

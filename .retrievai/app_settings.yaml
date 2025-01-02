@@ -11,7 +11,8 @@ embeddings:
   - text-embedding-3-small
   - text-embedding-3-large
   - text-embedding-ada-002
-  batch_mode: true
+  batch_size: 100
+  rate_limit: 1
   chunk_overlap: 200
   chunk_size: 1200
   min_chunk_size: 700

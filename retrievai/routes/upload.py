@@ -5,14 +5,6 @@ from retrievai.utils.ingestion_tools import LOADER_MAPPING, load_existing_hashes
     ingest_documents
 from retrievai.utils.settings_tools import load_session_state
 
-class ImprovedRateLimiter(BaseRateLimiter):
-
-    def acquire(self, *, blocking: bool = True) -> bool:
-        pass
-
-    async def aacquire(self, *, blocking: bool = True) -> bool:
-        pass
-
 
 # Initialize session state
 load_session_state()

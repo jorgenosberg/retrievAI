@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import time
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
@@ -32,6 +33,8 @@ persist_directory = Path(st.session_state["vectorstore"]["directory"])
 tmp_directory = Path(st.session_state["embeddings"]["tmp_directory"])
 chunk_size = st.session_state["embeddings"]["chunk_size"]
 chunk_overlap = st.session_state["embeddings"]["chunk_overlap"]
+batch_size = st.session_state["embeddings"]["batch_size"]
+rate_limit = st.session_state["embeddings"]["rate_limit"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 openai.api_key = OPENAI_API_KEY
 
@@ -189,6 +192,23 @@ def ingest_documents(documents, sub_progress_bar, main_progress_bar):
     chunks = split_documents(documents, chunk_size, chunk_overlap, sub_progress_bar)
 
     main_progress_bar.progress(1.0, text="Step 4/4: Adding chunks to vectorstore...")
+
+    total_chunks = len(chunks)
+    db = get_vectorstore()
+    ingested_chunks = []
+
+    for i in range(0, total_chunks, batch_size):
+        batch = chunks[i:i + batch_size]
+        db.add_documents(batch)
+        ingested_chunks.extend(batch)
+
+        # Respect rate limit
+        time.sleep(1 / rate_limit)
+
+        sub_progress_bar.progress(
+            (i + len(batch)) / total_chunks,
+            text=f"Ingesting batch {i // batch_size + 1}/{(total_chunks + batch_size - 1) // batch_size}...",
+        )
 
     if does_vectorstore_exist(persist_directory):
         db = get_vectorstore()

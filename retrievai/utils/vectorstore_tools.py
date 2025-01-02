@@ -1,8 +1,8 @@
 import logging
 from os import PathLike
 from pathlib import Path
-from typing import List
 
+import chromadb
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 import streamlit as st
@@ -32,17 +32,25 @@ def does_vectorstore_exist(persist_dir: str | PathLike) -> bool:
 
 
 def get_vectorstore():
+    """
+    Retrieve or create a Chroma vectorstore instance.
+    If the vectorstore exists in the persist_directory, load it.
+    Otherwise, create a new instance.
+    """
     embeddings = OpenAIEmbeddings(model=st.session_state["embeddings"]["model"])
-    db = Chroma(embedding_function=embeddings, persist_directory=st.session_state["vectorstore"]["directory"])
-    return db
+    persist_directory = st.session_state["vectorstore"]["directory"]
 
-def create_vectorstore_from_documents(documents):
-    embeddings = OpenAIEmbeddings(model=st.session_state["embeddings"]["model"])
-    db = Chroma.from_documents(
-        documents=documents,
-        embedding=embeddings,
-        persist_directory=st.session_state["vectorstore"]["directory"],
-    )
+    # Ensure the directory exists
+    persist_directory = Path(persist_directory)
+    persist_directory.mkdir(parents=True, exist_ok=True)
+
+
+    if does_vectorstore_exist(persist_directory):
+        logger.info("Loading existing vectorstore.")
+        db = Chroma(embedding_function=embeddings, persist_directory=str(persist_directory))
+    else:
+        logger.info("Vectorstore does not exist. Creating a new instance.")
+        db = Chroma.from_documents(documents=[], embeddings=embeddings, persist_directory=str(persist_directory))
     return db
 
 def get_retriever(document_filter: dict = None):
@@ -79,7 +87,8 @@ def get_all_embeddings_grouped():
             grouped_data[file_hash] = {
                 "parent_doc": parent_doc,
                 "ids": [],
-                "content_preview": []
+                "content_preview": [],
+                "metadata": metadata,
             }
         grouped_data[file_hash]["ids"].append(id_)
         grouped_data[file_hash]["content_preview"].append(content[:50] + "..." if content else "No content")
@@ -93,6 +102,7 @@ def get_all_embeddings_grouped():
             "Embedding IDs": data["ids"],
             "Content Preview": "\n".join(data["content_preview"][:3]) + (
                 "..." if len(data["content_preview"]) > 3 else ""),
+            "Metadata": data["metadata"],
         }
         for file_hash, data in grouped_data.items()
     ]

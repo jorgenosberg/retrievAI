@@ -2,7 +2,6 @@ import logging
 from os import PathLike
 from pathlib import Path
 
-import chromadb
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 import streamlit as st
@@ -50,7 +49,7 @@ def get_vectorstore():
         db = Chroma(embedding_function=embeddings, persist_directory=str(persist_directory))
     else:
         logger.info("Vectorstore does not exist. Creating a new instance.")
-        db = Chroma.from_documents(documents=[], embeddings=embeddings, persist_directory=str(persist_directory))
+        db = Chroma.from_documents(documents=[], embedding=embeddings, persist_directory=str(persist_directory))
     return db
 
 def get_retriever(document_filter: dict = None):

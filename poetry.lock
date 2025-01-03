@@ -4852,13 +4852,13 @@ streamlit = ">=1.2"
 
 [[package]]
 name = "streamlit-keyup"
-version = "0.2.4"
+version = "0.3.0"
 description = "Text input that renders on keyup"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "streamlit-keyup-0.2.4.tar.gz", hash = "sha256:ca5a050bcca339f1099ae89d053ed19310ae3d74d764fcd71493a53372819d96"},
-    {file = "streamlit_keyup-0.2.4-py3-none-any.whl", hash = "sha256:bdef2ce6307bfed7db1be93a7194dec5d25e06f500edddc9e9094a33f8770578"},
+    {file = "streamlit_keyup-0.3.0-py3-none-any.whl", hash = "sha256:ec7221617b1c832526db52859196c417578d6b4285942fbd10a0b2ff313899b3"},
+    {file = "streamlit_keyup-0.3.0.tar.gz", hash = "sha256:8595a14892423243669e5d50e982853ffb7eb201b65952a48676133ab9bbc937"},
 ]
 
 [package.dependencies]

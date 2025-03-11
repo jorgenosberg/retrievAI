@@ -47,8 +47,14 @@ export class ChatService {
     return chat
   }
 
-  async getAllChats(): Promise<Chat[]> {
-    return this.db.getAllChats()
+  // Get chats with pagination
+  async getChats(limit: number = 20, offset: number = 0): Promise<Chat[]> {
+    return this.db.getChats(limit, offset)
+  }
+
+  // Get total chat count for pagination
+  async getChatCount(): Promise<number> {
+    return this.db.getChatCount()
   }
 
   async getChatMessages(chatId: string): Promise<ChatMessage[]> {
@@ -249,6 +255,8 @@ export class ChatService {
       // Extract document ID from metadata
       const documentId = document.metadata.document_id
 
+      console.log('Citation', citationNumber, document.metadata)
+
       if (!documentId) {
         console.warn('Document without ID found in citation extraction', document.metadata)
         continue
@@ -262,7 +270,9 @@ export class ChatService {
         citations.push({
           id: uuidv4(),
           message_id: '', // Will be filled later
+          citation_number: citationNumber,
           document_id: documentId,
+          document_title: document.metadata.title ?? document.metadata.filename,
           text: document.pageContent.substring(0, 200) + '...',
           confidence: document.metadata._distance ? 1 - document.metadata._distance : 0.9 // Use distance if available
         })
@@ -271,13 +281,15 @@ export class ChatService {
 
     // If no citations were found but we have relevant docs, add them as implicit citations
     if (citations.length === 0 && relevantDocs.length > 0) {
-      for (const doc of relevantDocs.slice(0, 3)) {
+      for (const [i, doc] of relevantDocs.slice(0, 3).entries()) {
         // Limit to top 3 docs
         if (doc.metadata.document_id) {
           citations.push({
             id: uuidv4(),
             message_id: '', // Will be filled later
+            citation_number: i + 1,
             document_id: doc.metadata.document_id,
+            document_title: doc.metadata.title ?? doc.metadata.filename,
             text: doc.pageContent.substring(0, 200) + '...',
             confidence: doc.metadata._distance ? 1 - doc.metadata._distance : 0.8
           })

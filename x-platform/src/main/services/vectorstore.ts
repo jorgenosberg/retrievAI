@@ -28,17 +28,17 @@ export class VectorstoreService extends EventEmitter {
   async initialize(): Promise<void> {
     if (this.initialized) return
 
-    try {
-      await this.createVectorstore()
-    } catch (error) {
-      console.warn('Failed to initialize vectorstore, will initialize on demand:', error)
-    }
     this.initialized = true
+
+    await this.createVectorstore()
   }
 
   async createVectorstore(): Promise<void> {
+    if (this.vectorstore) return
+
     const embeddingConfig = this.settings.getEmbeddingModel()
-    let embeddings
+
+    let embeddings: OpenAIEmbeddings | HuggingFaceTransformersEmbeddings
 
     if (embeddingConfig.provider === 'openai') {
       const apiKey = this.settings.getApiKey('openai')
@@ -54,22 +54,26 @@ export class VectorstoreService extends EventEmitter {
         modelName: embeddingConfig.model
       })
     } else {
-      // HuggingFace embeddings
+      // HuggingFace embeddings - create lazily to avoid blocking
       embeddings = new HuggingFaceTransformersEmbeddings({
         model: embeddingConfig.model
       })
     }
 
+    console.log('Creating vectorstore...')
+
     // Create or load existing Chroma store
     this.vectorstore = await Chroma.fromExistingCollection(embeddings, {
-      collectionName: 'retrievai_documents',
-      url: `file://${this.storePath}`
+      collectionName: 'retrievai_documents'
     })
+
+    console.log('Vectorstore loaded successfully')
 
     // If the collection doesn't exist yet, it will be created when adding documents
   }
 
   async addDocuments(documents: LangChainDocument[], documentId: string): Promise<void> {
+    // Single vectorstore creation attempt with proper error handling
     if (!this.vectorstore) {
       try {
         console.log(`Creating vectorstore for document ${documentId}`)
@@ -80,12 +84,13 @@ export class VectorstoreService extends EventEmitter {
           'Document processing requires API key configuration. Please go to Settings to configure API keys.'
         )
       }
-    }
 
-    if (!this.vectorstore) {
-      throw new Error(
-        'Document processing requires API key configuration. Please go to Settings to configure API keys.'
-      )
+      // Still no vectorstore after attempt? Throw error once
+      if (!this.vectorstore) {
+        throw new Error(
+          'Document processing requires API key configuration. Please go to Settings to configure API keys.'
+        )
+      }
     }
 
     console.log(`Adding ${documents.length} chunks for document ${documentId} to vectorstore`)
@@ -133,6 +138,7 @@ export class VectorstoreService extends EventEmitter {
   }
 
   async removeDocuments(documentId: string): Promise<void> {
+    // If no vectorstore and we can't create one, just return - this is not a critical operation
     if (!this.vectorstore) {
       try {
         await this.createVectorstore()
@@ -140,11 +146,12 @@ export class VectorstoreService extends EventEmitter {
         console.warn('Cannot remove documents from vectorstore, not initialized:', error)
         return
       }
-    }
 
-    if (!this.vectorstore) {
-      console.warn('Cannot remove documents, vectorstore not initialized')
-      return
+      // Still no vectorstore? Just log and return
+      if (!this.vectorstore) {
+        console.warn('Cannot remove documents, vectorstore not initialized')
+        return
+      }
     }
 
     // Filter by document ID in metadata
@@ -158,6 +165,7 @@ export class VectorstoreService extends EventEmitter {
     documentIds: string[] = [],
     config?: { similarityThreshold?: number; maxSources?: number }
   ): Promise<LangChainDocument[]> {
+    // Single vectorstore creation attempt with proper error handling
     if (!this.vectorstore) {
       try {
         await this.createVectorstore()
@@ -167,12 +175,13 @@ export class VectorstoreService extends EventEmitter {
           'Searching requires API key configuration. Please go to Settings to configure API keys.'
         )
       }
-    }
 
-    if (!this.vectorstore) {
-      throw new Error(
-        'Searching requires API key configuration. Please go to Settings to configure API keys.'
-      )
+      // Still no vectorstore after attempt? Throw error once
+      if (!this.vectorstore) {
+        throw new Error(
+          'Searching requires API key configuration. Please go to Settings to configure API keys.'
+        )
+      }
     }
 
     const ragConfig = this.settings.getRagConfig()

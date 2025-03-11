@@ -17,8 +17,8 @@ export class SettingsService {
   private db: DatabaseService
   private defaultModelConfig: ModelConfig = {
     provider: 'openai',
-    model: 'gpt-3.5-turbo',
-    temperature: 0.7,
+    model: 'gpt-4o-mini',
+    temperature: 0.0,
     maxTokens: 2000
   }
   private embeddingConfig: EmbeddingConfig = {
@@ -31,7 +31,10 @@ export class SettingsService {
     similarityThreshold: 0.7,
     maxSources: 5
   }
-  private apiKeys: Record<string, string> = {}
+  private apiKeys: Record<string, string> = {
+    openai: '',
+    anthropic: ''
+  }
 
   constructor(db: DatabaseService) {
     this.db = db
@@ -90,7 +93,7 @@ export class SettingsService {
     const models = [
       {
         provider: 'openai',
-        models: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o']
+        models: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini']
       },
       {
         provider: 'anthropic',

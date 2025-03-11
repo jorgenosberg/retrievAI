@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
   Search,
@@ -39,23 +39,14 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
-import useStore from '@/stores'
-import { useShallow } from 'zustand/react/shallow'
+import { useChatContext } from '@/contexts'
 
 const HistoryPage = () => {
   const navigate = useNavigate()
 
-  // Get store data with useShallow for optimization
-  const { chats, messages, deleteChat, loadChats, loadMessages, createChat } = useStore(
-    useShallow((state) => ({
-      chats: state.chats,
-      messages: state.messages,
-      deleteChat: state.deleteChat,
-      loadChats: state.loadChats,
-      loadMessages: state.loadMessages,
-      createChat: state.createChat
-    }))
-  )
+  // Get chat data from context
+  const { chats, messages, deleteChat, loadChats, loadNextPage, loadMessages, createChat } =
+    useChatContext()
 
   // Local UI state
   const [searchQuery, setSearchQuery] = useState('')
@@ -68,11 +59,15 @@ const HistoryPage = () => {
   const [isLoading, setIsLoading] = useState(true)
 
   // Load chats from the store when component mounts
+  const [hasMore, setHasMore] = useState(false)
+
   useEffect(() => {
     const fetchChats = async () => {
       setIsLoading(true)
       try {
-        await loadChats()
+        const { chats, count } = await loadChats(0)
+        // Check if there are more chats to load
+        setHasMore(count > chats.length)
       } catch (error) {
         console.error('Error loading chats:', error)
         toast.error('Failed to load conversation history')
@@ -84,49 +79,65 @@ const HistoryPage = () => {
     fetchChats()
   }, [loadChats])
 
-  // Transform chat data for display
-  const chatHistory = chats.map((chat) => {
-    // Get messages for this chat
-    const chatMessages = messages[chat.id] || []
+  // Transform chat data for display - memoized to prevent recalculation on every render
+  const chatHistory = useMemo(
+    () =>
+      chats.map((chat) => {
+        // Get messages for this chat
+        const chatMessages = messages[chat.id] || []
 
-    // Extract document names (unique)
-    const documentNames = Array.from(
-      new Set(
-        chatMessages.flatMap((msg) => msg.citations || []).map((citation) => citation.document_id)
-      )
-    ).filter(Boolean)
+        // Extract document names (unique)
+        const documentNames = Array.from(
+          new Set(
+            chatMessages
+              .flatMap((msg) => msg.citations || [])
+              .map((citation) => citation.document_id)
+          )
+        ).filter(Boolean)
 
-    // Get preview text from the last message
-    const lastMessage = chatMessages[chatMessages.length - 1]
-    const previewText = lastMessage?.content || 'No messages'
+        // Get preview text from the last message
+        const lastMessage = chatMessages[chatMessages.length - 1]
+        const previewText = lastMessage?.content || 'No messages'
 
-    return {
-      id: chat.id,
-      title: chat.title || 'Untitled Conversation',
-      lastActive: new Date(chat.updated_at || chat.created_at),
-      messages: chatMessages.length,
-      previewText: previewText.slice(0, 100) + (previewText.length > 100 ? '...' : ''),
-      documents: documentNames
-    }
-  })
+        return {
+          id: chat.id,
+          title: chat.title || 'Untitled Conversation',
+          lastActive: new Date(chat.updated_at || chat.created_at),
+          messages: chatMessages.length,
+          previewText: previewText.slice(0, 100) + (previewText.length > 100 ? '...' : ''),
+          documents: documentNames
+        }
+      }),
+    [chats, messages]
+  )
 
-  const uniqueDocuments = Array.from(new Set(chatHistory.flatMap((chat) => chat.documents))).sort()
+  // Memoize the unique documents list
+  const uniqueDocuments = useMemo(
+    () => Array.from(new Set(chatHistory.flatMap((chat) => chat.documents))).sort(),
+    [chatHistory]
+  )
 
-  // Filter and sort history
-  const filteredHistory = chatHistory
-    .filter((chat) => {
+  // Filter and sort history - memoized to prevent recalculation on every render
+  const filteredHistory = useMemo(() => {
+    // Precompute the lowercase search query
+    const lowercaseQuery = searchQuery.toLowerCase()
+
+    // First filter chats - this reduces the dataset for the more expensive sort operation
+    const filtered = chatHistory.filter((chat) => {
       // Search filter
       const matchesSearch =
-        searchQuery === '' ||
-        chat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        chat.previewText.toLowerCase().includes(searchQuery.toLowerCase())
+        lowercaseQuery === '' ||
+        chat.title.toLowerCase().includes(lowercaseQuery) ||
+        chat.previewText.toLowerCase().includes(lowercaseQuery)
 
       // Document filter
       const matchesDocument = !filterDocument || chat.documents.includes(filterDocument)
 
       return matchesSearch && matchesDocument
     })
-    .sort((a, b) => {
+
+    // Then sort the filtered results
+    return filtered.sort((a, b) => {
       // Sort based on selected order
       if (sortOrder === 'newest') {
         return b.lastActive.getTime() - a.lastActive.getTime()
@@ -136,22 +147,22 @@ const HistoryPage = () => {
         return a.title.localeCompare(b.title)
       }
     })
+  }, [chatHistory, searchQuery, filterDocument, sortOrder])
 
-  const toggleChatSelection = (id: string) => {
+  // Memoize event handlers to prevent recreation on every render
+  const toggleChatSelection = useCallback((id: string) => {
     setSelectedChats((prev) =>
       prev.includes(id) ? prev.filter((chatId) => chatId !== id) : [...prev, id]
     )
-  }
+  }, [])
 
-  const selectAllChats = () => {
-    if (selectedChats.length === filteredHistory.length) {
-      setSelectedChats([])
-    } else {
-      setSelectedChats(filteredHistory.map((chat) => chat.id))
-    }
-  }
+  const selectAllChats = useCallback(() => {
+    setSelectedChats((prev) =>
+      prev.length === filteredHistory.length ? [] : filteredHistory.map((chat) => chat.id)
+    )
+  }, [filteredHistory])
 
-  const deleteSelectedChats = async () => {
+  const deleteSelectedChats = useCallback(async () => {
     try {
       // Delete each selected chat via the store method
       await Promise.all(selectedChats.map((chatId) => deleteChat(chatId)))
@@ -166,28 +177,34 @@ const HistoryPage = () => {
       console.error('Error deleting chats:', error)
       toast.error('Failed to delete conversations')
     }
-  }
+  }, [selectedChats, deleteChat])
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSearchQuery('')
     setFilterModel(null)
     setFilterDocument(null)
     setSortOrder('newest')
-  }
+  }, [])
 
-  const openChat = async (id: string) => {
-    try {
-      // Load messages for this chat
-      await loadMessages(id)
-      // Navigate to the chat page
-      navigate(`/chat/${id}`)
-    } catch (error) {
-      console.error('Error opening chat:', error)
-      toast.error('Failed to open conversation')
-    }
-  }
+  const openChat = useCallback(
+    async (id: string) => {
+      try {
+        // Set a loading indicator
+        setIsLoading(true)
+        // Load messages for this chat
+        await loadMessages(id)
+        // Navigate to the chat page
+        navigate(`/chat/${id}`)
+      } catch (error) {
+        console.error('Error opening chat:', error)
+        toast.error('Failed to open conversation')
+        setIsLoading(false)
+      }
+    },
+    [loadMessages, navigate]
+  )
 
-  const handleNewChat = async () => {
+  const handleNewChat = useCallback(async () => {
     try {
       const newChatId = await createChat('New Research Chat')
       navigate(`/chat/${newChatId}`)
@@ -195,7 +212,7 @@ const HistoryPage = () => {
       console.error('Error creating chat:', error)
       toast.error('Failed to create new chat')
     }
-  }
+  }, [createChat, navigate])
 
   const areFiltersActive =
     searchQuery !== '' || filterModel !== null || filterDocument !== null || sortOrder !== 'newest'
@@ -508,6 +525,51 @@ const HistoryPage = () => {
                 </Card>
               </motion.div>
             ))}
+          </div>
+        )}
+
+        {/* Load more button */}
+        {hasMore && !isLoading && (
+          <div className="p-4 text-center mt-4">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setIsLoading(true)
+                try {
+                  await loadNextPage()
+                  setHasMore(false) // For simplicity, just disable after one load
+                } catch (error) {
+                  console.error('Error loading more chats:', error)
+                  toast.error('Failed to load more conversations')
+                } finally {
+                  setIsLoading(false)
+                }
+              }}
+            >
+              {isLoading && (
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+              )}
+              Load More Conversations
+            </Button>
           </div>
         )}
       </motion.div>

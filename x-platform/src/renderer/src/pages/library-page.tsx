@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search,
@@ -47,12 +48,12 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { useStore } from '@/stores'
+import { useDocumentContext } from '@/contexts'
 import { toast } from 'sonner'
 
 const LibraryPage = () => {
-  // Use document store
-  const { documents, loadDocuments, deleteDocument } = useStore()
+  // Use document context for pagination
+  const { documents, loadDocuments, loadNextPage, deleteDocument } = useDocumentContext()
 
   const [selectedDocs, setSelectedDocs] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -60,12 +61,32 @@ const LibraryPage = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [filterTags, setFilterTags] = useState<string[]>([])
 
-  // Get all unique tags
-  const allTags = Array.from(new Set(documents.flatMap((doc) => doc.tags))).sort()
+  // Memoize all tags to prevent recalculation on every render
+  const allTags = useMemo(
+    () => Array.from(new Set(documents.flatMap((doc) => doc.tags))).sort(),
+    [documents]
+  )
 
-  // Re-fetch documents when the component mounts
+  // Load documents with pagination when component mounts
+  const [isLoading, setIsLoading] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+
   useEffect(() => {
-    loadDocuments()
+    async function fetchDocuments() {
+      setIsLoading(true)
+      try {
+        const { documents, count } = await loadDocuments(0)
+        // Check if there are more documents to load
+        setHasMore(count > documents.length)
+      } catch (error) {
+        console.error('Error loading documents:', error)
+        toast.error('Failed to load documents')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchDocuments()
   }, [loadDocuments])
 
   const handleDeleteDocuments = async () => {
@@ -108,41 +129,46 @@ const LibraryPage = () => {
     }
   }
 
-  const toggleSortDirection = () => {
-    setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-  }
+  const handleSortChange = useCallback(
+    (value: 'date' | 'name' | 'size') => {
+      if (sortBy === value) {
+        setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setSortBy(value)
+        setSortDirection('desc')
+      }
+    },
+    [sortBy]
+  )
 
-  const handleSortChange = (value: 'date' | 'name' | 'size') => {
-    if (sortBy === value) {
-      toggleSortDirection()
-    } else {
-      setSortBy(value)
-      setSortDirection('desc')
-    }
-  }
-
-  const toggleFilterTag = (tag: string) => {
+  const toggleFilterTag = useCallback((tag: string) => {
     setFilterTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
-  }
+  }, [])
 
-  // Filter and sort documents
-  const filteredDocuments = documents
-    .filter((doc) => {
-      // Text search
-      const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase())
+  // Filter and sort documents using memoization to prevent recalculation on every render
+  const filteredDocuments = useMemo(() => {
+    // First perform filtering (usually reduces data size significantly)
+    const filtered = documents.filter((doc) => {
+      // Text search - precompute lowercase search query outside the loop
+      const lowercaseQuery = searchQuery.toLowerCase()
+      const matchesSearch =
+        lowercaseQuery === '' || doc.title.toLowerCase().includes(lowercaseQuery)
 
-      // Tag filtering
+      // Tag filtering - only do this work if we have tag filters
       const matchesTags =
         filterTags.length === 0 || filterTags.every((tag) => doc.tags.includes(tag))
 
       return matchesSearch && matchesTags
     })
-    .sort((a, b) => {
+
+    // Then sort the filtered results (smaller dataset to sort)
+    return filtered.sort((a, b) => {
       // Sorting
       if (sortBy === 'date') {
-        return sortDirection === 'asc'
-          ? new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
-          : new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        // Pre-calculate dates once instead of repeatedly in comparisons
+        const dateA = new Date(a.updated_at).getTime()
+        const dateB = new Date(b.updated_at).getTime()
+        return sortDirection === 'asc' ? dateA - dateB : dateB - dateA
       } else if (sortBy === 'name') {
         return sortDirection === 'asc'
           ? a.title.localeCompare(b.title)
@@ -152,16 +178,18 @@ const LibraryPage = () => {
         return sortDirection === 'asc' ? a.file_size - b.file_size : b.file_size - a.file_size
       }
     })
+  }, [documents, searchQuery, filterTags, sortBy, sortDirection])
 
-  const formatFileSize = (bytes: number): string => {
+  // Memoize utility functions to prevent recreation on every render
+  const formatFileSize = useCallback((bytes: number): string => {
     if (bytes < 1024) return bytes + ' B'
     else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
     else return (bytes / 1048576).toFixed(1) + ' MB'
-  }
+  }, [])
 
-  const formatDate = (dateString: string): string => {
+  const formatDate = useCallback((dateString: string): string => {
     return format(new Date(dateString), 'MMM d, yyyy')
-  }
+  }, [])
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -319,7 +347,7 @@ const LibraryPage = () => {
         </div>
       </div>
 
-      {/* Document list */}
+      {/* Document list with load more button */}
       <div className="border rounded-md overflow-hidden">
         <div className="bg-muted/50 p-3 border-b grid grid-cols-12 gap-4 text-sm font-medium">
           <div className="col-span-1">
@@ -335,6 +363,34 @@ const LibraryPage = () => {
           <div className="col-span-2">Date</div>
           <div className="col-span-2">Actions</div>
         </div>
+
+        {isLoading && documents.length === 0 && (
+          <div className="p-6 text-center">
+            <div className="flex justify-center mb-2">
+              <svg
+                className="animate-spin h-6 w-6 text-primary"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                ></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            </div>
+            <p className="text-sm text-muted-foreground">Loading documents...</p>
+          </div>
+        )}
 
         <AnimatePresence>
           {filteredDocuments.length === 0 ? (
@@ -424,6 +480,50 @@ const LibraryPage = () => {
             ))
           )}
         </AnimatePresence>
+
+        {/* Load more button */}
+        {hasMore && !isLoading && (
+          <div className="p-4 text-center border-t">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setIsLoading(true)
+                try {
+                  await loadNextPage()
+                } catch (error) {
+                  console.error('Error loading more documents:', error)
+                  toast.error('Failed to load more documents')
+                } finally {
+                  setIsLoading(false)
+                }
+              }}
+            >
+              {isLoading && (
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+              )}
+              Load More
+            </Button>
+          </div>
+        )}
       </div>
     </motion.div>
   )

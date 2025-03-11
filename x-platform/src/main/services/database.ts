@@ -17,7 +17,9 @@ export interface Document {
 export interface Citation {
   id: string
   message_id: string
+  citation_number: number
   document_id: string
+  document_title: string
   text: string
   confidence: number
 }
@@ -47,6 +49,9 @@ export class DatabaseService {
   private db: Database.Database
   private dbPath: string
 
+  private dbInitialized = false
+  private dbInitPromise: Promise<void> | null = null
+
   constructor(appDataPath: string) {
     // Ensure directory exists
     if (!fs.existsSync(appDataPath)) {
@@ -54,57 +59,99 @@ export class DatabaseService {
     }
 
     this.dbPath = path.join(appDataPath, 'retrievai.db')
-    this.db = new Database(this.dbPath)
 
-    // Enable foreign keys
+    // Use minimal SQLite configuration with good defaults
+    this.db = new Database(this.dbPath, {
+      readonly: false,
+      fileMustExist: false
+    })
+
+    // Enable WAL mode for better concurrency
+    this.db.pragma('journal_mode = WAL')
+
+    // Enable foreign keys for data integrity
     this.db.pragma('foreign_keys = ON')
   }
 
   async initialize(): Promise<void> {
-    // Create tables if they don't exist
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS documents (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        path TEXT NOT NULL,
-        tags TEXT, -- JSON array as string
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        file_size INTEGER NOT NULL,
-        content_type TEXT NOT NULL
-      );
+    // Only initialize once
+    if (this.dbInitialized) return
 
-      CREATE TABLE IF NOT EXISTS chats (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
+    // If already initializing, return the same promise
+    if (this.dbInitPromise) return this.dbInitPromise
 
-      CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        chat_id TEXT NOT NULL,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
-      );
+    console.log('Initializing database...')
 
-      CREATE TABLE IF NOT EXISTS citations (
-        id TEXT PRIMARY KEY,
-        message_id TEXT NOT NULL,
-        document_id TEXT NOT NULL,
-        text TEXT NOT NULL,
-        confidence REAL NOT NULL,
-        FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE,
-        FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
-      );
+    // Create an initialization promise but use setImmediate to yield to the event loop
+    this.dbInitPromise = new Promise<void>((resolve, reject) => {
+      // Use setImmediate to not block the main thread during startup
+      setImmediate(() => {
+        try {
+          // Run large SQL operations in transaction for better performance
+          this.db.transaction(() => {
+            this.db.exec(`
+              CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                path TEXT NOT NULL,
+                tags TEXT, -- JSON array as string
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                content_type TEXT NOT NULL
+              );
 
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `)
+              CREATE TABLE IF NOT EXISTS chats (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+              );
+
+              CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                chat_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
+              );
+
+              CREATE TABLE IF NOT EXISTS citations (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                citation_number INTEGER NOT NULL,
+                document_id TEXT NOT NULL,
+                document_title TEXT NOT NULL,
+                text TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+              );
+
+              CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+              );
+              
+              -- Add indexes for better query performance
+              CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+              CREATE INDEX IF NOT EXISTS idx_citations_message_id ON citations(message_id);
+              CREATE INDEX IF NOT EXISTS idx_citations_document_id ON citations(document_id);
+            `)
+          })()
+
+          console.log('Database initialized successfully')
+          this.dbInitialized = true
+          resolve()
+        } catch (error) {
+          console.error('Failed to initialize database:', error)
+          reject(error)
+        }
+      })
+    })
+
+    return this.dbInitPromise
   }
 
   // Document operations
@@ -126,14 +173,24 @@ export class DatabaseService {
     )
   }
 
-  getAllDocuments(): Document[] {
-    const stmt = this.db.prepare('SELECT * FROM documents ORDER BY created_at DESC')
-    const rows = stmt.all() as any[]
+  // Get document list with pagination for lazy loading
+  getDocuments(limit: number = 20, offset: number = 0): Document[] {
+    const stmt = this.db.prepare(
+      'SELECT * FROM documents ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    )
+    const rows = stmt.all(limit, offset) as any[]
 
     return rows.map((row) => ({
       ...row,
       tags: JSON.parse(row.tags || '[]')
     }))
+  }
+
+  // Get total document count for pagination
+  getDocumentCount(): number {
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM documents')
+    const result = stmt.get() as { count: number }
+    return result.count
   }
 
   getDocumentById(id: string): Document | null {
@@ -191,9 +248,17 @@ export class DatabaseService {
     stmt.run(chat.id, chat.title, chat.created_at, chat.updated_at)
   }
 
-  getAllChats(): Chat[] {
-    const stmt = this.db.prepare('SELECT * FROM chats ORDER BY updated_at DESC')
-    return stmt.all() as Chat[]
+  // Get chats with pagination for lazy loading
+  getChats(limit: number = 20, offset: number = 0): Chat[] {
+    const stmt = this.db.prepare('SELECT * FROM chats ORDER BY updated_at DESC LIMIT ? OFFSET ?')
+    return stmt.all(limit, offset) as Chat[]
+  }
+
+  // Get total chat count for pagination
+  getChatCount(): number {
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM chats')
+    const result = stmt.get() as { count: number }
+    return result.count
   }
 
   getChatById(id: string): Chat | null {
@@ -233,8 +298,8 @@ export class DatabaseService {
     // Add citations if provided
     if (message.citations && message.citations.length > 0) {
       const citationStmt = this.db.prepare(`
-        INSERT INTO citations (id, message_id, document_id, text, confidence)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO citations (id, message_id, citation_number, document_id, document_title, text, confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `)
 
       const insertCitations = this.db.transaction((citations: Citation[]) => {
@@ -242,7 +307,9 @@ export class DatabaseService {
           citationStmt.run(
             citation.id,
             citation.message_id,
+            citation.citation_number,
             citation.document_id,
+            citation.document_title,
             citation.text,
             citation.confidence
           )

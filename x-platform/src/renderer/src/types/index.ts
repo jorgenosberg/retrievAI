@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// Document types
+// types/index.ts
 export interface Document {
   id: string
   title: string
@@ -11,31 +11,6 @@ export interface Document {
   content_type: string
 }
 
-export interface FileWithProgress {
-  id: string
-  file: {
-    name: string
-    type: string
-    path: string
-    size: number
-    lastModified: Date
-  }
-  progress: number
-  status: 'idle' | 'uploading' | 'success' | 'error'
-  error?: string
-  documentId?: string
-}
-
-export interface ProcessProgress {
-  documentId: string
-  stage: 'loading' | 'splitting' | 'indexing'
-  progress: number
-  currentFile?: string
-  processedChunks?: number
-  totalChunks?: number
-}
-
-// Chat types
 export interface Chat {
   id: string
   title: string
@@ -43,43 +18,49 @@ export interface Chat {
   updated_at: string
 }
 
-export interface Citation {
-  id: string
-  message_id: string
-  document_id: string
-  text: string
-  confidence: number
-}
-
 export interface ChatMessage {
   id: string
   chat_id: string
   role: 'user' | 'assistant'
   content: string
-  created_at: string
+  timestamp: string
+  sources: any[]
   citations?: Citation[]
 }
 
-export interface QueryResult {
-  answer: string
-  citations: Citation[]
-  usage: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
-  processTime: number
-  model: string
-  userMessageId: string
-  assistantMessageId: string
+export interface Citation {
+  id: string
+  message_id: string
+  citation_number: number
+  document_id: string
+  document_title: string
+  text: string
+  confidence: number
+}
+
+export interface ProcessingProgress {
+  documentId: string
+  stage: 'loading' | 'splitting' | 'indexing'
+  progress: number
+  currentFile?: string
+}
+
+export interface UploadFileProgress {
+  fileId: string
+  fileName: string
+  filePath: string
+  documentId?: string
+  progress: number
+  stage: 'idle' | 'loading' | 'splitting' | 'indexing' | 'complete' | 'error'
+  error?: string
 }
 
 // Settings types
 export interface ModelConfig {
   provider: 'openai' | 'anthropic'
   model: string
-  temperature?: number
-  maxTokens?: number
+  temperature: number
+  maxTokens: number
 }
 
 export interface EmbeddingConfig {
@@ -94,46 +75,60 @@ export interface RagConfig {
   maxSources: number
 }
 
-// UI types
-export interface Toast {
-  id: string
-  message: string
-  type: 'success' | 'error' | 'warning' | 'info'
+export interface Settings {
+  defaultModel: ModelConfig
+  embeddingModel: EmbeddingConfig
+  ragConfig: RagConfig
 }
 
+// Electron API interface to match preload.ts
+export interface ElectronAPI {
+  documents: {
+    getPage: (limit?: number, offset?: number) => Promise<Document[]>
+    getCount: () => Promise<number>
+    getById: (id: string) => Promise<Document | null>
+    process: (filePaths: string[], tags: string[]) => Promise<Document[]>
+    delete: (id: string) => Promise<void>
+    onProcessingProgress: (callback: (progress: ProcessingProgress) => void) => () => void
+  }
+  chats: {
+    getPage: (limit?: number, offset?: number) => Promise<Chat[]>
+    getCount: () => Promise<number>
+    create: (title: string) => Promise<Chat>
+    getMessages: (chatId: string) => Promise<ChatMessage[]>
+    sendQuery: (
+      chatId: string,
+      query: string,
+      documentIds: string[],
+      config?: any
+    ) => Promise<{
+      userMessage: ChatMessage
+      assistantMessage: ChatMessage
+      usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+      model: string
+    }>
+    delete: (id: string) => Promise<void>
+  }
+  settings: {
+    getAll: () => Promise<Settings>
+    update: (settings: Partial<Settings>) => Promise<boolean>
+    setApiKey: (provider: string, key: string) => Promise<boolean>
+  }
+  dialog: {
+    openFileDialog: (options: any) => Promise<string[]>
+  }
+  app: {
+    onReady: (callback: () => void) => () => void
+    onServicesReady: (callback: () => void) => () => void
+  }
+}
+
+// Extend the Window interface
 declare global {
   interface Window {
-    electronAPI: {
-      documents: {
-        getAll: () => Promise<any[]>
-        getById: (id: string) => Promise<any>
-        process: (filePaths: string[], tags: string[]) => Promise<any[]>
-        delete: (id: string) => Promise<void>
-        onProcessingProgress: (callback: (progress: any) => void) => void
-      }
-      chats: {
-        getAll: () => Promise<any[]>
-        create: (title: string) => Promise<any>
-        getMessages: (chatId: string) => Promise<any[]>
-        sendQuery: (
-          chatId: string,
-          query: string,
-          documentIds: string[],
-          config?: any
-        ) => Promise<any>
-        delete: (id: string) => Promise<void>
-      }
-      settings: {
-        getAll: () => Promise<any>
-        update: (settings: any) => Promise<void>
-        setApiKey: (provider: string, key: string) => Promise<void>
-      }
-      dialog: {
-        openFileDialog: (options: any) => Promise<any>
-      }
-      app: {
-        onReady: (callback: () => any) => Promise<void>
-      }
+    electronAPI: ElectronAPI
+    fs: {
+      readFile: (path: string, options?: { encoding?: string }) => Promise<Uint8Array | string>
     }
   }
 }

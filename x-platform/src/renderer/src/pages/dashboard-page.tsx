@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FileText, MessageSquare, BookOpen, Clock } from 'lucide-react'
@@ -11,8 +11,7 @@ import {
   CardTitle
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useStore } from '@/stores'
-import { useShallow } from 'zustand/react/shallow'
+import { useDocumentContext, useChatContext } from '@/contexts'
 
 interface Document {
   id: string
@@ -42,60 +41,64 @@ const DashboardPage = () => {
   })
   const [loading, setLoading] = useState(true)
 
-  // Use stores for data fetching
-  const { documents, loadDocuments, chats, loadChats } = useStore(
-    useShallow((state) => ({
-      documents: state.documents,
-      loadDocuments: state.loadDocuments,
-      chats: state.chats,
-      loadChats: state.loadChats
-    }))
-  )
+  // Use context hooks for data fetching
+  const { documents, loadDocuments } = useDocumentContext()
+  const { chats, loadChats } = useChatContext()
 
+  // Separate data loading effect from data processing
   useEffect(() => {
-    const fetchStats = async () => {
+    const loadInitialData = async () => {
       try {
-        // Load documents from the document store
-        await loadDocuments()
-
-        // Load chats from the chat store
-        await loadChats()
-
-        // Process document data for display
-        const recentDocuments = documents
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 3)
-          .map((doc) => ({
-            id: doc.id,
-            name: doc.title,
-            date: new Date(doc.created_at).toISOString().split('T')[0]
-          }))
-
-        // Process chat data for display
-        const recentChats = chats
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 2)
-          .map((chat) => ({
-            id: chat.id,
-            title: chat.title || `Chat ${chat.id.substring(0, 8)}`,
-            date: new Date(chat.created_at).toISOString().split('T')[0]
-          }))
-
-        setStats({
-          documentsCount: documents.length,
-          chatCount: chats.length,
-          recentDocuments,
-          recentChats
-        })
+        // Create a promise for both data loading operations
+        await Promise.all([loadDocuments(), loadChats()])
       } catch (error) {
         console.error('Error fetching dashboard data:', error)
-      } finally {
-        setLoading(false)
       }
     }
 
-    fetchStats()
-  }, [loadDocuments, loadChats, documents, chats])
+    loadInitialData()
+  }, [loadDocuments, loadChats])
+
+  // Memoize document processing
+  const recentDocuments = useMemo(() => {
+    if (!documents.length) return []
+
+    return documents
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3)
+      .map((doc) => ({
+        id: doc.id,
+        name: doc.title,
+        date: new Date(doc.created_at).toISOString().split('T')[0]
+      }))
+  }, [documents])
+
+  // Memoize chat processing
+  const recentChats = useMemo(() => {
+    if (!chats.length) return []
+
+    return chats
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 2)
+      .map((chat) => ({
+        id: chat.id,
+        title: chat.title || `Chat ${chat.id.substring(0, 8)}`,
+        date: new Date(chat.created_at).toISOString().split('T')[0]
+      }))
+  }, [chats])
+
+  // Update stats when processed data changes
+  useEffect(() => {
+    if (documents.length > 0 || chats.length > 0) {
+      setStats({
+        documentsCount: documents.length,
+        chatCount: chats.length,
+        recentDocuments,
+        recentChats
+      })
+      setLoading(false)
+    }
+  }, [recentDocuments, recentChats, documents.length, chats.length])
 
   const containerVariants = {
     hidden: { opacity: 0 },

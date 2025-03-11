@@ -9,9 +9,13 @@ export function setupIpcHandlers(
   settingsService: SettingsService,
   mainWindow: BrowserWindow
 ) {
-  // Document operations
-  ipcMain.handle('documents:getAll', async () => {
-    return await documentService.getAllDocuments()
+  // Document operations with pagination
+  ipcMain.handle('documents:getPage', async (_event, limit = 20, offset = 0) => {
+    return await documentService.getDocuments(limit, offset)
+  })
+  
+  ipcMain.handle('documents:getCount', async () => {
+    return await documentService.getDocumentCount()
   })
 
   ipcMain.handle('documents:getById', async (_event, id) => {
@@ -32,9 +36,13 @@ export function setupIpcHandlers(
     return await documentService.deleteDocument(id)
   })
 
-  // Chat operations
-  ipcMain.handle('chats:getAll', async () => {
-    return await chatService.getAllChats()
+  // Chat operations with pagination
+  ipcMain.handle('chats:getPage', async (_event, limit = 20, offset = 0) => {
+    return await chatService.getChats(limit, offset)
+  })
+  
+  ipcMain.handle('chats:getCount', async () => {
+    return await chatService.getChatCount()
   })
 
   ipcMain.handle('chats:create', async (_event, title) => {

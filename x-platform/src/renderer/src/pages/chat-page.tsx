@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send,
@@ -32,8 +33,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import { useStore } from '@/stores'
-import { useShallow } from 'zustand/react/shallow'
+import { useChatContext, useDocumentContext, useSettingsContext } from '@/contexts'
+import MessageContent from '@/components/message-content'
 
 // Document with selection state for UI
 interface DocumentFilter {
@@ -50,17 +51,147 @@ interface ModelOption {
   description: string
 }
 
+// MessageItem props interface
+interface MessageItemProps {
+  message: any
+  handleCopyMessage: (content: string) => void
+  selectedCitation: string | null
+  setSelectedCitation: (id: string | null) => void
+}
+
+// Memoized message component to avoid rerenders
+const MessageItem = memo(
+  ({ message, handleCopyMessage, selectedCitation, setSelectedCitation }: MessageItemProps) => {
+    return (
+      <motion.div
+        key={message.id}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+        className={cn('flex', message.role === 'user' ? 'justify-end' : 'justify-start')}
+      >
+        <div
+          className={cn(
+            'flex flex-col max-w-[80%] space-y-2',
+            message.role === 'user' ? 'items-end' : 'items-start'
+          )}
+        >
+          <div
+            className={cn(
+              'rounded-lg px-4 py-3 shadow-sm',
+              message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+            )}
+          >
+            <div className="flex justify-between items-start gap-2">
+              <div className="flex-1">
+                <MessageContent
+                  content={message.content}
+                  citations={message.citations}
+                  onCitationClick={(id) => setSelectedCitation(id === selectedCitation ? null : id)}
+                />
+              </div>
+              {message.role === 'assistant' && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 hover:bg-accent-foreground/10"
+                  onClick={() => handleCopyMessage(message.content)}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Citations */}
+          {message.role === 'assistant' && message.citations && message.citations.length > 0 && (
+            <div className="space-y-1 w-full">
+              <p className="text-xs text-muted-foreground">
+                Citations from {message.citations.length} document
+                {message.citations.length !== 1 ? 's' : ''}
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                {message.citations.map((citation: any) => (
+                  <Badge
+                    key={citation.id}
+                    variant="outline"
+                    className={cn(
+                      'cursor-pointer text-xs py-1 px-2 gap-1.5 hover:bg-primary/10 transition-colors',
+                      selectedCitation === citation.id && 'bg-primary/10 border-primary/50'
+                    )}
+                    onClick={() =>
+                      setSelectedCitation(citation.id === selectedCitation ? null : citation.id)
+                    }
+                  >
+                    <FileText className="h-3 w-3" />
+                    <span className="truncate max-w-[120px]">{citation.document_title}</span>
+                  </Badge>
+                ))}
+              </div>
+
+              <AnimatePresence>
+                {selectedCitation && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-2"
+                  >
+                    {message.citations
+                      .filter((c: any) => c.id === selectedCitation)
+                      .map((citation: any) => (
+                        <div
+                          key={citation.id}
+                          className="p-3 rounded border bg-muted/50 text-sm relative"
+                        >
+                          <div className="absolute top-2 right-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => setSelectedCitation(null)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="font-medium mb-1 pr-8">{citation.document_title}</div>
+                          <div className="text-muted-foreground">{citation.text}</div>
+                          <div className="mt-2 flex justify-between items-center">
+                            <Badge variant="outline" className="text-xs">
+                              Confidence: {Math.round(citation.confidence * 100)}%
+                            </Badge>
+                            <Button variant="ghost" size="sm" className="h-7">
+                              <ExternalLink className="h-3 w-3 mr-1" />
+                              View in document
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )
+  }
+)
+
+MessageItem.displayName = 'MessageItem'
+
 const ChatPage = () => {
   const [input, setInput] = useState('')
   const [documents, setDocuments] = useState<DocumentFilter[]>([])
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
-  const [selectedModel, setSelectedModel] = useState<string>('')
+  const [selectedModel, setSelectedModel] = useState<string>('gpt-4o-mini')
   const [selectedCitation, setSelectedCitation] = useState<string | null>(null)
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [allTags, setAllTags] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Get store hooks with useShallow for optimization
+  // Get data from context hooks
   const {
     createChat,
     chats,
@@ -68,26 +199,12 @@ const ChatPage = () => {
     messages,
     loadMessages,
     sendMessage,
-    loadDocuments,
-    loadSettings,
-    settings,
-    isGeneratingResponse,
-    documents: storeDocuments
-  } = useStore(
-    useShallow((state) => ({
-      createChat: state.createChat,
-      chats: state.chats,
-      currentChatId: state.currentChatId,
-      messages: state.messages,
-      loadMessages: state.loadMessages,
-      sendMessage: state.sendMessage,
-      loadDocuments: state.loadDocuments,
-      loadSettings: state.loadSettings,
-      settings: state.settings,
-      isGeneratingResponse: state.isGeneratingResponse,
-      documents: state.documents
-    }))
-  )
+    isGeneratingResponse
+  } = useChatContext()
+
+  const { documents: storeDocuments, loadDocuments } = useDocumentContext()
+
+  const { settings, loadSettings } = useSettingsContext()
 
   // Get current chat messages
   const currentMessages = useMemo(
@@ -95,42 +212,12 @@ const ChatPage = () => {
     [currentChatId, messages]
   )
 
-  // Initialize app on component mount
+  // Initialize app on component mount - split into two effects for better performance
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        // Load documents from the document store
-        await loadDocuments()
-
-        // Fetch settings to get model information
-        await loadSettings()
-
-        // Get available models from settings
-        if (settings.defaultModel) {
-          setModelOptions([
-            {
-              id: settings.defaultModel.model,
-              name: settings.defaultModel.model,
-              provider: settings.defaultModel.provider,
-              description: `${settings.defaultModel.provider} model`
-            }
-          ])
-          setSelectedModel(settings.defaultModel.model)
-        }
-
-        // Convert API documents to DocumentFilter format
-        const filterDocs: DocumentFilter[] = storeDocuments.map((doc) => ({
-          id: doc.id,
-          title: doc.title || 'Unknown document',
-          selected: true,
-          tags: doc.tags || []
-        }))
-
-        setDocuments(filterDocs)
-
-        // Extract all unique tags
-        const tags = Array.from(new Set(filterDocs.flatMap((doc) => doc.tags))).sort()
-        setAllTags(tags)
+        // Load essential data in parallel
+        await Promise.all([loadDocuments(), loadSettings()])
       } catch (error) {
         console.error('Error initializing chat:', error)
         toast.error('Failed to load chat resources')
@@ -138,26 +225,75 @@ const ChatPage = () => {
     }
 
     initializeChat()
-  }, [loadDocuments, loadSettings, settings.defaultModel, storeDocuments])
+  }, [loadDocuments, loadSettings])
 
-  // Create a new chat when component mounts if no current chat exists
+  // Update model options when settings change
   useEffect(() => {
-    const createNewChat = async () => {
-      try {
-        await createChat('New Research Chat')
-      } catch (error) {
-        console.error('Error creating chat:', error)
-        toast.error('Failed to create new chat session')
+    // Get available models from settings
+    if (settings.defaultModel) {
+      setModelOptions([
+        {
+          id: settings.defaultModel.model,
+          name: settings.defaultModel.model,
+          provider: settings.defaultModel.provider,
+          description: `${settings.defaultModel.provider} model`
+        }
+      ])
+      setSelectedModel(settings.defaultModel.model)
+    }
+  }, [settings.defaultModel])
+
+  // Update documents and tags when documents change
+  useEffect(() => {
+    // Convert API documents to DocumentFilter format
+    const filterDocs: DocumentFilter[] = storeDocuments.map((doc) => ({
+      id: doc.id,
+      title: doc.title || 'Unknown document',
+      selected: true,
+      tags: doc.tags || []
+    }))
+
+    setDocuments(filterDocs)
+
+    // Extract all unique tags
+    const tags = Array.from(new Set(filterDocs.flatMap((doc) => doc.tags))).sort()
+    setAllTags(tags)
+  }, [storeDocuments])
+
+  // Effect 1: Create a new chat if none exists
+  useEffect(() => {
+    const createNewChatIfNeeded = async () => {
+      if (chats.length === 0) {
+        console.log('No chats found, creating a new one')
+        try {
+          await createChat('New Research Chat')
+        } catch (error) {
+          console.error('Error creating chat:', error)
+          toast.error('Failed to create chat session. Retrying...')
+          setTimeout(createNewChatIfNeeded, 1000)
+        }
       }
     }
 
-    if (!currentChatId && chats.length === 0) {
-      createNewChat()
-    } else if (currentChatId && !messages[currentChatId]) {
-      // Load messages for the current chat if they're not loaded yet
-      loadMessages(currentChatId)
+    createNewChatIfNeeded()
+  }, [chats, createChat])
+
+  // Effect 2: Load messages if we have a currentChatId but no messages
+  useEffect(() => {
+    const loadMessagesIfNeeded = async () => {
+      if (currentChatId && !messages[currentChatId]) {
+        console.log('Loading messages for chat:', currentChatId)
+        try {
+          await loadMessages(currentChatId)
+        } catch (error) {
+          console.error('Error loading messages:', error)
+          toast.error('Failed to load messages')
+        }
+      }
     }
-  }, [currentChatId, createChat, chats.length, messages, loadMessages])
+
+    loadMessagesIfNeeded()
+  }, [currentChatId, messages, loadMessages])
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -166,7 +302,18 @@ const ChatPage = () => {
     }
   }, [currentMessages])
 
-  const handleSendMessage = async () => {
+  useEffect(() => {
+    console.log('Updating currentChatId', currentChatId)
+  }, [currentChatId])
+
+  const handleSendMessage = useCallback(async () => {
+    console.log('Sending message:', input)
+    console.log('Selected model:', selectedModel)
+    console.log(
+      'Selected documents:',
+      documents.filter((doc) => doc.selected).map((doc) => doc.id)
+    )
+    console.log('Current chat ID:', currentChatId)
     if (!input.trim() || isGeneratingResponse || !currentChatId || !selectedModel) return
 
     // Get selected document IDs
@@ -180,40 +327,48 @@ const ChatPage = () => {
       console.error('Error sending message:', error)
       toast.error('Failed to generate a response. Please try again.')
     }
-  }
+  }, [input, isGeneratingResponse, currentChatId, selectedModel, documents, sendMessage])
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
-    }
-  }
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        handleSendMessage()
+      }
+    },
+    [handleSendMessage]
+  )
 
-  const toggleDocumentSelection = (id: string) => {
+  const toggleDocumentSelection = useCallback((id: string) => {
     setDocuments((docs) =>
       docs.map((doc) => (doc.id === id ? { ...doc, selected: !doc.selected } : doc))
     )
-  }
+  }, [])
 
-  const toggleTagFilter = (tag: string) => {
+  const toggleTagFilter = useCallback((tag: string) => {
     setFilterTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
-  }
+  }, [])
 
-  const selectAllDocuments = (selected: boolean) => {
+  const selectAllDocuments = useCallback((selected: boolean) => {
     setDocuments((docs) => docs.map((doc) => ({ ...doc, selected })))
-  }
+  }, [])
 
-  const handleCopyMessage = (content: string) => {
+  const handleCopyMessage = useCallback((content: string) => {
     navigator.clipboard.writeText(content)
     toast.success('Copied to clipboard')
-  }
+  }, [])
 
-  const filteredDocuments = documents.filter((doc) => {
-    if (filterTags.length === 0) return true
-    return filterTags.every((tag) => doc.tags.includes(tag))
-  })
+  // Memoize filtered documents to avoid recalculation on every render
+  const filteredDocuments = useMemo(
+    () =>
+      documents.filter((doc) => {
+        if (filterTags.length === 0) return true
+        return filterTags.every((tag) => doc.tags.includes(tag))
+      }),
+    [documents, filterTags]
+  )
 
-  const clearChat = async () => {
+  const clearChat = useCallback(async () => {
     try {
       // Create a new chat
       await createChat('New Research Chat')
@@ -221,7 +376,7 @@ const ChatPage = () => {
       console.error('Error creating new chat:', error)
       toast.error('Failed to create new chat session')
     }
-  }
+  }, [createChat])
 
   return (
     <div className="flex h-full">
@@ -265,7 +420,7 @@ const ChatPage = () => {
                   <SheetDescription>Configure your chat experience</SheetDescription>
                 </SheetHeader>
 
-                <Tabs defaultValue="model" className="mt-6">
+                <Tabs defaultValue="model" className="px-4 mt-2">
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="model">AI Model</TabsTrigger>
                     <TabsTrigger value="documents">Documents</TabsTrigger>
@@ -392,7 +547,7 @@ const ChatPage = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="max-w-md space-y-4"
+                className="max-w-lg space-y-4"
               >
                 <h3 className="text-2xl font-bold">Welcome to Research Assistant</h3>
                 <p className="text-muted-foreground">
@@ -403,7 +558,7 @@ const ChatPage = () => {
                   <p className="font-medium">Example questions to get started:</p>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className="w-full justify-start text-wrap whitespace-normal text-start"
                     onClick={() =>
                       setInput('What are the key findings in the Machine Learning Survey?')
                     }
@@ -413,7 +568,7 @@ const ChatPage = () => {
                   </Button>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className="w-full justify-start text-wrap whitespace-normal text-start"
                     onClick={() =>
                       setInput('Compare neural networks and transformers architectures')
                     }
@@ -423,7 +578,7 @@ const ChatPage = () => {
                   </Button>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className="w-full justify-start text-wrap whitespace-normal text-start"
                     onClick={() =>
                       setInput(
                         'Summarize the best data visualization techniques for scientific research'
@@ -440,128 +595,13 @@ const ChatPage = () => {
             <div className="space-y-6 max-w-3xl mx-auto">
               <AnimatePresence>
                 {currentMessages.map((message) => (
-                  <motion.div
+                  <MessageItem
                     key={message.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-                    className={cn(
-                      'flex',
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'flex flex-col max-w-[80%] space-y-2',
-                        message.role === 'user' ? 'items-end' : 'items-start'
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          'rounded-lg px-4 py-3 shadow-sm',
-                          message.role === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted'
-                        )}
-                      >
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="whitespace-pre-wrap">{message.content}</div>
-                          {message.role === 'assistant' && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => handleCopyMessage(message.content)}
-                            >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Citations */}
-                      {message.role === 'assistant' &&
-                        message.citations &&
-                        message.citations.length > 0 && (
-                          <div className="space-y-1 w-full">
-                            <p className="text-xs text-muted-foreground">
-                              Citations from {message.citations.length} document
-                              {message.citations.length !== 1 ? 's' : ''}
-                            </p>
-                            <div className="flex gap-2 flex-wrap">
-                              {message.citations.map((citation) => (
-                                <Badge
-                                  key={citation.id}
-                                  variant="outline"
-                                  className={cn(
-                                    'cursor-pointer text-xs py-1 px-2 gap-1.5 hover:bg-primary/10 transition-colors',
-                                    selectedCitation === citation.id &&
-                                      'bg-primary/10 border-primary/50'
-                                  )}
-                                  onClick={() =>
-                                    setSelectedCitation(
-                                      citation.id === selectedCitation ? null : citation.id
-                                    )
-                                  }
-                                >
-                                  <FileText className="h-3 w-3" />
-                                  <span className="truncate max-w-[120px]">
-                                    {citation.document_id}
-                                  </span>
-                                </Badge>
-                              ))}
-                            </div>
-
-                            <AnimatePresence>
-                              {selectedCitation && (
-                                <motion.div
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: 'auto' }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  className="mt-2"
-                                >
-                                  {message.citations
-                                    .filter((c) => c.id === selectedCitation)
-                                    .map((citation) => (
-                                      <div
-                                        key={citation.id}
-                                        className="p-3 rounded border bg-muted/50 text-sm relative"
-                                      >
-                                        <div className="absolute top-2 right-2">
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-6 w-6"
-                                            onClick={() => setSelectedCitation(null)}
-                                          >
-                                            <X className="h-3 w-3" />
-                                          </Button>
-                                        </div>
-                                        <div className="font-medium mb-1 pr-8">
-                                          {citation.document_id}
-                                        </div>
-                                        <div className="text-muted-foreground">
-                                          {citation.document_id}
-                                        </div>
-                                        <div className="mt-2 flex justify-between items-center">
-                                          <Badge variant="outline" className="text-xs">
-                                            Confidence: {Math.round(citation.confidence * 100)}%
-                                          </Badge>
-                                          <Button variant="ghost" size="sm" className="h-7">
-                                            <ExternalLink className="h-3 w-3 mr-1" />
-                                            View in document
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        )}
-                    </div>
-                  </motion.div>
+                    message={message}
+                    handleCopyMessage={handleCopyMessage}
+                    selectedCitation={selectedCitation}
+                    setSelectedCitation={setSelectedCitation}
+                  />
                 ))}
               </AnimatePresence>
 

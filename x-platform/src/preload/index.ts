@@ -5,25 +5,48 @@ import { contextBridge, ipcRenderer } from 'electron'
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Document operations
+  // Document operations with pagination
   documents: {
-    getAll: () => ipcRenderer.invoke('documents:getAll'),
+    // Paginated document loading
+    getPage: (limit: number = 20, offset: number = 0) =>
+      ipcRenderer.invoke('documents:getPage', limit, offset),
+    getCount: () => ipcRenderer.invoke('documents:getCount'),
     getById: (id: string) => ipcRenderer.invoke('documents:getById', id),
     process: (filePaths: string[], tags: string[]) =>
       ipcRenderer.invoke('documents:process', filePaths, tags),
     delete: (id: string) => ipcRenderer.invoke('documents:delete', id),
     onProcessingProgress: (callback: (progress: any) => void) => {
-      const listener = (_event: any, progress: any) => callback(progress)
+      // Debounce the processing progress events to reduce UI updates
+      let lastUpdate = 0
+      let lastProgress = -1
+
+      const listener = (_event: any, progress: any) => {
+        const now = Date.now()
+        // Only update UI max once per 250ms or if progress is 100% (complete)
+        if (
+          now - lastUpdate > 250 ||
+          progress.progress === 100 ||
+          progress.progress !== lastProgress
+        ) {
+          lastUpdate = now
+          lastProgress = progress.progress
+          callback(progress)
+        }
+      }
+
       ipcRenderer.on('document:processingProgress', listener)
       return () => {
-        ipcRenderer.removeListener('document:processingProgress', listener)
+        ipcRenderer.off('document:processingProgress', listener)
       }
     }
   },
 
-  // Chat operations
+  // Chat operations with pagination
   chats: {
-    getAll: () => ipcRenderer.invoke('chats:getAll'),
+    // Paginated chat loading
+    getPage: (limit: number = 20, offset: number = 0) =>
+      ipcRenderer.invoke('chats:getPage', limit, offset),
+    getCount: () => ipcRenderer.invoke('chats:getCount'),
     create: (title: string) => ipcRenderer.invoke('chats:create', title),
     getMessages: (chatId: string) => ipcRenderer.invoke('chats:getMessages', chatId),
     sendQuery: (chatId: string, query: string, documentIds: string[], config: any = {}) =>
@@ -45,6 +68,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   app: {
-    onReady: (callback: () => any) => ipcRenderer.on('app:ready', callback)
+    onReady: (callback: () => any) => {
+      ipcRenderer.on('app:ready', callback)
+      return () => {
+        // Clean up the event listener when component unmounts
+        ipcRenderer.off('app:ready', callback)
+      }
+    },
+    onServicesReady: (callback: () => any) => {
+      ipcRenderer.on('services:ready', callback)
+      return () => {
+        // Clean up the event listener when component unmounts
+        ipcRenderer.off('services:ready', callback)
+      }
+    }
   }
 })

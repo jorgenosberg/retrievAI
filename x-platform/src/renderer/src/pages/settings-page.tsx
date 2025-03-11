@@ -44,7 +44,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { useStore } from '@/stores'
+import { useSettingsContext } from '@/contexts'
 
 // Default model information - will be replaced with data from the API
 const DEFAULT_MODEL_INFO = {
@@ -96,7 +96,7 @@ const DEFAULT_MODEL_INFO = {
 const DEFAULT_AVAILABLE_MODELS = [
   {
     provider: 'openai',
-    models: ['gpt-4o', 'gpt-3.5-turbo']
+    models: ['gpt-4o', 'gpt-3.5-turbo', 'gpt-4o-mini']
   },
   {
     provider: 'anthropic',
@@ -145,8 +145,8 @@ interface SettingsFormValues {
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('general')
 
-  // Replace these local states with store values
-  const { settings, updateSettings, setApiKey } = useStore()
+  // Use settings context
+  const { settings, updateSettings, setApiKey } = useSettingsContext()
 
   // Additional local UI states can remain
   const [openAIEnabled, setOpenAIEnabled] = useState(settings.defaultModel.provider === 'openai')
@@ -154,8 +154,8 @@ const SettingsPage = () => {
     settings.defaultModel.provider === 'anthropic'
   )
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false)
-  const [availableModels, setAvailableModels] = useState(DEFAULT_AVAILABLE_MODELS)
-  const [localModelsEnabled, setLocalModelsEnabled] = useState(false)
+  const [availableModels, _setAvailableModels] = useState(DEFAULT_AVAILABLE_MODELS)
+  const [_localModelsEnabled, setLocalModelsEnabled] = useState(false)
 
   const {
     register,

@@ -33,20 +33,32 @@ export class ServiceManager {
     console.log('Initializing services...')
 
     try {
-      // Initialize in correct order
+      // Start measuring time
+      const startTime = Date.now()
+
+      // Initialize database (optimized version now initializes in background)
       await this.db.initialize()
-      console.log('Database initialized')
 
+      // Wait only for database since settings depends on it
+      console.log(`Database initialized in ${Date.now() - startTime}ms`)
+
+      // Initialize settings synchronously, important for app function
       await this.settings.initialize()
-      console.log('Settings initialized')
+      console.log(`Settings initialized in ${Date.now() - startTime}ms`)
 
-      await this.vectorstore.initialize()
-      console.log('Vectorstore initialized')
+      // Start vectorstore initialization in background
+      await this.vectorstore.initialize().catch((err) => {
+        console.warn('Background vectorstore initialization error:', err)
+      })
 
+      console.log(`Vectorstore initialized in ${Date.now() - startTime}ms`)
+
+      console.log(`Essential services initialized in ${Date.now() - startTime}ms`)
       this.initialized = true
-      console.log('All services initialized successfully')
+
+      return
     } catch (error) {
-      console.error('Failed to initialize services:', error)
+      console.error('Failed to initialize essential services:', error)
       throw error
     }
   }

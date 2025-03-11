@@ -4,25 +4,24 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setupIpcHandlers } from './ipc'
 import { ServiceManager } from './service-manager'
 
-app.disableHardwareAcceleration()
-
 let mainWindow: BrowserWindow | null = null
 let serviceManager: ServiceManager | null = null
 
 async function createWindow() {
+  // Start service initialization but don't wait for it
   serviceManager = new ServiceManager()
-  await serviceManager.initialize()
+  const serviceInitPromise = serviceManager.initialize()
 
-  // Create the browser window.
+  // Create the browser window immediately without waiting for services
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
-    autoHideMenuBar: true,
+    backgroundColor: 'hsl(228.82 85% 5%)',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
-      nodeIntegration: false,
+      nodeIntegration: true,
       sandbox: false
     }
   })
@@ -36,13 +35,15 @@ async function createWindow() {
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
+  // Load the UI immediately - don't wait for services
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // Complete service initialization in the background
+  return serviceInitPromise
 }
 
 // This method will be called when Electron has finished
@@ -59,9 +60,10 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  await createWindow()
+  // Initialize window and start services in parallel
+  const servicesPromise = createWindow()
 
-  // Set up IPC handlers
+  // Set up IPC handlers early - they'll work even if services aren't ready yet
   if (serviceManager && mainWindow) {
     try {
       setupIpcHandlers(
@@ -71,12 +73,24 @@ app.whenReady().then(async () => {
         mainWindow
       )
       console.log('IPC handlers successfully registered')
+
+      // Notify renderer that the UI is ready (services may still be initializing)
+      mainWindow.webContents.send('app:ready')
     } catch (error) {
       console.error('Failed to setup IPC handlers:', error)
     }
   }
 
-  mainWindow?.webContents.send('app:ready')
+  // Wait for services in the background
+  servicesPromise
+    .then(() => {
+      console.log('All services initialized in background')
+      // Notify renderer that services are ready
+      mainWindow?.webContents.send('services:ready')
+    })
+    .catch((error) => {
+      console.error('Service initialization failed:', error)
+    })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
@@ -93,6 +107,9 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+// Cleanup resources before app quits
+app.on('before-quit', () => {})
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {

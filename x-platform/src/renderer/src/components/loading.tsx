@@ -1,20 +1,13 @@
-import { useEffect } from 'react'
-import { useStore } from '@/stores'
-import { useShallow } from 'zustand/react/shallow'
+import { useAppContext } from '@/contexts'
 
-const Loading = () => {
-  const { appStatus, initializationError, initializeApp } = useStore(
-    useShallow((state) => ({
-      appStatus: state.appStatus,
-      initializationError: state.initializationError,
-      initializeApp: state.initializeApp
-    }))
-  )
+interface LoadingProps {
+  text?: string
+  fullScreen?: boolean
+  initApp?: boolean
+}
 
-  useEffect(() => {
-    // Initialize the app when the component mounts
-    initializeApp()
-  }, [initializeApp])
+const Loading = ({ text = 'RetrievAI is starting up...', fullScreen = true }: LoadingProps) => {
+  const { appStatus, initializationError } = useAppContext()
 
   if (appStatus === 'error') {
     return (
@@ -50,14 +43,17 @@ const Loading = () => {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-background">
+    <div
+      className={`flex flex-col items-center justify-center bg-background ${fullScreen ? 'h-screen w-screen fixed inset-0 z-50' : 'h-full w-full p-8'}`}
+    >
       <div className="text-center">
-        <h1 className="text-2xl font-semibold text-foreground mb-4">RetrievAI is starting up...</h1>
+        <h1 className="text-2xl font-semibold text-foreground mb-4">{text}</h1>
 
-        {/* Spinner animation */}
-        <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4 will-change-transform"></div>
 
-        <p className="text-muted-foreground">Loading your documents and initializing services...</p>
+        <p className="text-muted-foreground">
+          {fullScreen ? 'Loading your documents and initializing services...' : 'Please wait...'}
+        </p>
       </div>
     </div>
   )

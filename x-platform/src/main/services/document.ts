@@ -44,16 +44,16 @@ export class DocumentService extends EventEmitter {
 
     for (const filePath of filePaths) {
       try {
+        // Generate a unique ID for the document
+        const documentId = uuidv4()
+
         // Report loading progress
         this.emit('processing-progress', {
-          documentId: 'loading',
+          documentId,
           stage: 'loading',
           progress: 0,
           currentFile: path.basename(filePath)
         } as ProcessProgress)
-
-        // Generate a unique ID for the document
-        const documentId = uuidv4()
 
         // Get file stats
         const stats = fs.statSync(filePath)
@@ -200,8 +200,14 @@ export class DocumentService extends EventEmitter {
     return documents
   }
 
-  async getAllDocuments(): Promise<Document[]> {
-    return this.db.getAllDocuments()
+  // Get documents with pagination for lazy loading
+  async getDocuments(limit: number = 20, offset: number = 0): Promise<Document[]> {
+    return this.db.getDocuments(limit, offset)
+  }
+
+  // Get total document count for pagination
+  async getDocumentCount(): Promise<number> {
+    return this.db.getDocumentCount()
   }
 
   async getDocumentById(id: string): Promise<Document | null> {

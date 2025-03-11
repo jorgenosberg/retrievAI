@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   Search,
@@ -39,102 +39,81 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
-
-// Define interfaces
-interface ChatHistory {
-  id: string
-  title: string
-  lastActive: Date
-  messages: number
-  previewText: string
-  models: string[]
-  documents: string[]
-}
-
-// Mock data for chat history
-const mockChatHistory: ChatHistory[] = [
-  {
-    id: 'chat_1709650289',
-    title: 'Machine Learning Survey Analysis',
-    lastActive: new Date(2025, 2, 6, 14, 23),
-    messages: 12,
-    previewText: 'What are the key findings in the Machine Learning Survey?',
-    models: ['Claude 3 Opus'],
-    documents: ['Machine Learning Survey.pdf', 'Neural Networks Overview.pdf', 'Research Notes.txt']
-  },
-  {
-    id: 'chat_1709563889',
-    title: 'Neural Networks vs Transformers',
-    lastActive: new Date(2025, 2, 5, 10, 45),
-    messages: 8,
-    previewText: 'Compare neural networks and transformers architectures',
-    models: ['Claude 3 Opus', 'Claude 3 Sonnet'],
-    documents: ['Neural Networks Overview.pdf', 'Transformers Architecture.docx']
-  },
-  {
-    id: 'chat_1709477489',
-    title: 'Data Visualization Techniques',
-    lastActive: new Date(2025, 2, 4, 16, 12),
-    messages: 14,
-    previewText: 'Summarize the best data visualization techniques for scientific research',
-    models: ['GPT-4 Turbo'],
-    documents: ['Data Visualization Techniques.pdf', 'Research Notes.txt']
-  },
-  {
-    id: 'chat_1709391089',
-    title: 'Research Project Planning',
-    lastActive: new Date(2025, 2, 3, 9, 30),
-    messages: 6,
-    previewText: 'Help me plan a research project on deep learning applications',
-    models: ['Claude 3 Sonnet'],
-    documents: ['Machine Learning Survey.pdf', 'Research Notes.txt']
-  },
-  {
-    id: 'chat_1709304689',
-    title: 'Literature Review Assistance',
-    lastActive: new Date(2025, 2, 2, 13, 45),
-    messages: 18,
-    previewText: 'Can you help me organize a literature review on neural networks?',
-    models: ['GPT-4 Turbo', 'Claude 3 Opus'],
-    documents: ['Neural Networks Overview.pdf', 'Machine Learning Survey.pdf', 'Research Notes.txt']
-  },
-  {
-    id: 'chat_1709131889',
-    title: 'Research Questions Formulation',
-    lastActive: new Date(2025, 2, 1, 11, 20),
-    messages: 10,
-    previewText: 'How can I formulate effective research questions for my ML project?',
-    models: ['Claude 3 Opus'],
-    documents: ['Machine Learning Survey.pdf', 'Research Notes.txt']
-  },
-  {
-    id: 'chat_1708958289',
-    title: 'Statistical Analysis Methods',
-    lastActive: new Date(2025, 1, 28, 15, 10),
-    messages: 7,
-    previewText: 'What statistical methods should I use to analyze my experimental results?',
-    models: ['GPT-3.5 Turbo'],
-    documents: ['Research Notes.txt', 'Data Visualization Techniques.pdf']
-  }
-]
+import useStore from '@/stores'
+import { useShallow } from 'zustand/react/shallow'
 
 const HistoryPage = () => {
   const navigate = useNavigate()
+
+  // Get store data with useShallow for optimization
+  const { chats, messages, deleteChat, loadChats, loadMessages, createChat } = useStore(
+    useShallow((state) => ({
+      chats: state.chats,
+      messages: state.messages,
+      deleteChat: state.deleteChat,
+      loadChats: state.loadChats,
+      loadMessages: state.loadMessages,
+      createChat: state.createChat
+    }))
+  )
+
+  // Local UI state
   const [searchQuery, setSearchQuery] = useState('')
-  const [history, setHistory] = useState<ChatHistory[]>(mockChatHistory)
   const [selectedChats, setSelectedChats] = useState<string[]>([])
   const [isSelectMode, setIsSelectMode] = useState(false)
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'alphabetical'>('newest')
   const [filterModel, setFilterModel] = useState<string | null>(null)
   const [filterDocument, setFilterDocument] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Extract unique models and documents for filters
-  const uniqueModels = Array.from(new Set(history.flatMap((chat) => chat.models))).sort()
-  const uniqueDocuments = Array.from(new Set(history.flatMap((chat) => chat.documents))).sort()
+  // Load chats from the store when component mounts
+  useEffect(() => {
+    const fetchChats = async () => {
+      setIsLoading(true)
+      try {
+        await loadChats()
+      } catch (error) {
+        console.error('Error loading chats:', error)
+        toast.error('Failed to load conversation history')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchChats()
+  }, [loadChats])
+
+  // Transform chat data for display
+  const chatHistory = chats.map((chat) => {
+    // Get messages for this chat
+    const chatMessages = messages[chat.id] || []
+
+    // Extract document names (unique)
+    const documentNames = Array.from(
+      new Set(
+        chatMessages.flatMap((msg) => msg.citations || []).map((citation) => citation.document_id)
+      )
+    ).filter(Boolean)
+
+    // Get preview text from the last message
+    const lastMessage = chatMessages[chatMessages.length - 1]
+    const previewText = lastMessage?.content || 'No messages'
+
+    return {
+      id: chat.id,
+      title: chat.title || 'Untitled Conversation',
+      lastActive: new Date(chat.updated_at || chat.created_at),
+      messages: chatMessages.length,
+      previewText: previewText.slice(0, 100) + (previewText.length > 100 ? '...' : ''),
+      documents: documentNames
+    }
+  })
+
+  const uniqueDocuments = Array.from(new Set(chatHistory.flatMap((chat) => chat.documents))).sort()
 
   // Filter and sort history
-  const filteredHistory = history
+  const filteredHistory = chatHistory
     .filter((chat) => {
       // Search filter
       const matchesSearch =
@@ -142,13 +121,10 @@ const HistoryPage = () => {
         chat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         chat.previewText.toLowerCase().includes(searchQuery.toLowerCase())
 
-      // Model filter
-      const matchesModel = !filterModel || chat.models.includes(filterModel)
-
       // Document filter
       const matchesDocument = !filterDocument || chat.documents.includes(filterDocument)
 
-      return matchesSearch && matchesModel && matchesDocument
+      return matchesSearch && matchesDocument
     })
     .sort((a, b) => {
       // Sort based on selected order
@@ -175,14 +151,21 @@ const HistoryPage = () => {
     }
   }
 
-  const deleteSelectedChats = () => {
-    setHistory((prev) => prev.filter((chat) => !selectedChats.includes(chat.id)))
-    setSelectedChats([])
-    setIsSelectMode(false)
-    setDeleteDialogOpen(false)
-    toast.success(
-      `Deleted ${selectedChats.length} conversation${selectedChats.length > 1 ? 's' : ''}`
-    )
+  const deleteSelectedChats = async () => {
+    try {
+      // Delete each selected chat via the store method
+      await Promise.all(selectedChats.map((chatId) => deleteChat(chatId)))
+
+      setSelectedChats([])
+      setIsSelectMode(false)
+      setDeleteDialogOpen(false)
+      toast.success(
+        `Deleted ${selectedChats.length} conversation${selectedChats.length > 1 ? 's' : ''}`
+      )
+    } catch (error) {
+      console.error('Error deleting chats:', error)
+      toast.error('Failed to delete conversations')
+    }
   }
 
   const clearFilters = () => {
@@ -192,9 +175,26 @@ const HistoryPage = () => {
     setSortOrder('newest')
   }
 
-  const openChat = (id: string) => {
-    // In a real app, you would navigate to the chat page with the chat ID
-    navigate(`/chat/${id}`)
+  const openChat = async (id: string) => {
+    try {
+      // Load messages for this chat
+      await loadMessages(id)
+      // Navigate to the chat page
+      navigate(`/chat/${id}`)
+    } catch (error) {
+      console.error('Error opening chat:', error)
+      toast.error('Failed to open conversation')
+    }
+  }
+
+  const handleNewChat = async () => {
+    try {
+      const newChatId = await createChat('New Research Chat')
+      navigate(`/chat/${newChatId}`)
+    } catch (error) {
+      console.error('Error creating chat:', error)
+      toast.error('Failed to create new chat')
+    }
   }
 
   const areFiltersActive =
@@ -256,7 +256,7 @@ const HistoryPage = () => {
                 <Button variant="outline" size="sm" onClick={() => setIsSelectMode(true)}>
                   Select
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => navigate('/chat')}>
+                <Button variant="ghost" size="sm" onClick={handleNewChat}>
                   <RefreshCcw className="h-4 w-4 mr-1" />
                   New Chat
                 </Button>
@@ -334,17 +334,6 @@ const HistoryPage = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem className="font-semibold">Model</DropdownMenuItem>
-                {uniqueModels.map((model) => (
-                  <DropdownMenuCheckboxItem
-                    key={model}
-                    checked={filterModel === model}
-                    onCheckedChange={() => setFilterModel(filterModel === model ? null : model)}
-                  >
-                    {model}
-                  </DropdownMenuCheckboxItem>
-                ))}
-
                 <DropdownMenuSeparator />
 
                 <DropdownMenuItem className="font-semibold">Document</DropdownMenuItem>
@@ -431,8 +420,17 @@ const HistoryPage = () => {
           </div>
         )}
 
-        {/* Chat history list */}
-        {filteredHistory.length === 0 ? (
+        {/* Loading state */}
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="flex items-center space-x-2 animate-pulse">
+              <div className="w-4 h-4 rounded-full bg-primary" />
+              <div className="w-4 h-4 rounded-full bg-primary/80" />
+              <div className="w-4 h-4 rounded-full bg-primary/60" />
+            </div>
+            <p className="text-muted-foreground mt-4">Loading conversations...</p>
+          </div>
+        ) : filteredHistory.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="rounded-full bg-muted p-3 mb-3">
               <Search className="h-6 w-6 text-muted-foreground" />
@@ -493,13 +491,6 @@ const HistoryPage = () => {
                           {chat.previewText}
                         </p>
                         <div className="flex justify-between items-center mt-2">
-                          <div className="flex flex-wrap gap-2">
-                            {chat.models.map((model) => (
-                              <Badge key={model} variant="outline" className="text-xs">
-                                {model}
-                              </Badge>
-                            ))}
-                          </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <div className="flex items-center">
                               <Clock className="h-3 w-3 mr-1" />

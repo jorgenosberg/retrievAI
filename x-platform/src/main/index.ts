@@ -1,25 +1,34 @@
 import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
 import { setupIpcHandlers } from './ipc'
+import { ServiceManager } from './service-manager'
 
-function createWindow(): void {
+app.disableHardwareAcceleration()
+
+let mainWindow: BrowserWindow | null = null
+let serviceManager: ServiceManager | null = null
+
+async function createWindow() {
+  serviceManager = new ServiceManager()
+  await serviceManager.initialize()
+
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
       sandbox: false
     }
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    mainWindow?.show()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -39,7 +48,7 @@ function createWindow(): void {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.retrievai')
 
@@ -50,10 +59,24 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // Set up IPC handlers
-  setupIpcHandlers()
+  await createWindow()
 
-  createWindow()
+  // Set up IPC handlers
+  if (serviceManager && mainWindow) {
+    try {
+      setupIpcHandlers(
+        serviceManager.getDocumentService(),
+        serviceManager.getChatService(),
+        serviceManager.getSettings(),
+        mainWindow
+      )
+      console.log('IPC handlers successfully registered')
+    } catch (error) {
+      console.error('Failed to setup IPC handlers:', error)
+    }
+  }
+
+  mainWindow?.webContents.send('app:ready')
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

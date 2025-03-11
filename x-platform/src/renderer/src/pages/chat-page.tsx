@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send,
@@ -32,35 +32,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-
-interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: Date
-  citations?: Array<{
-    id: string
-    documentId: string
-    documentName: string
-    content: string
-    confidence: number
-  }>
-  metadata?: {
-    processingTime?: number
-    tokensUsed?: number
-    model?: string
-  }
-}
-
-// Document from the API
-interface DocumentData {
-  id: string
-  title: string
-  path: string
-  tags: string[]
-  created_at: string
-  updated_at: string
-}
+import { useStore } from '@/stores'
+import { useShallow } from 'zustand/react/shallow'
 
 // Document with selection state for UI
 interface DocumentFilter {
@@ -77,176 +50,135 @@ interface ModelOption {
   description: string
 }
 
-// Will be populated from API
-const modelOptions: ModelOption[] = [
-  {
-    id: 'claude-3-opus-20240229',
-    name: 'Claude 3 Opus',
-    provider: 'anthropic',
-    description: 'Most powerful model with highest accuracy and reasoning ability'
-  },
-  {
-    id: 'claude-3-sonnet-20240229',
-    name: 'Claude 3 Sonnet',
-    provider: 'anthropic',
-    description: 'Balanced performance and efficiency'
-  },
-  {
-    id: 'gpt-4o',
-    name: 'GPT-4o',
-    provider: 'openai',
-    description: 'Advanced reasoning and knowledge'
-  },
-  {
-    id: 'gpt-3.5-turbo',
-    name: 'GPT-3.5 Turbo',
-    provider: 'openai',
-    description: 'Fast and efficient for standard queries'
-  }
-]
-
 const ChatPage = () => {
   const [input, setInput] = useState('')
-  const [chatId, setChatId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [documents, setDocuments] = useState<DocumentFilter[]>([])
-  const [selectedModel, setSelectedModel] = useState<string>('claude-3-sonnet-20240229')
-  const [isLoading, setIsLoading] = useState(false)
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
+  const [selectedModel, setSelectedModel] = useState<string>('')
   const [selectedCitation, setSelectedCitation] = useState<string | null>(null)
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [allTags, setAllTags] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Load documents on component mount
-  useEffect(() => {
-    const loadDocuments = async () => {
-      try {
-        const result = await window.api.getAllDocuments();
-        if (result.success) {
-          // Convert API documents to DocumentFilter format
-          const filterDocs: DocumentFilter[] = result.documents.map((doc: DocumentData) => ({
-            id: doc.id,
-            title: doc.title,
-            selected: true,
-            tags: doc.tags
-          }));
-          
-          setDocuments(filterDocs);
-          
-          // Extract all unique tags
-          const tags = Array.from(new Set(filterDocs.flatMap(doc => doc.tags))).sort();
-          setAllTags(tags);
-        } else {
-          console.error('Error loading documents:', result.error);
-          toast.error('Failed to load documents');
-        }
-      } catch (error) {
-        console.error('Error loading documents:', error);
-        toast.error('Failed to load documents');
-      }
-    };
-    
-    loadDocuments();
-  }, []);
+  // Get store hooks with useShallow for optimization
+  const {
+    createChat,
+    chats,
+    currentChatId,
+    messages,
+    loadMessages,
+    sendMessage,
+    loadDocuments,
+    loadSettings,
+    settings,
+    isGeneratingResponse,
+    documents: storeDocuments
+  } = useStore(
+    useShallow((state) => ({
+      createChat: state.createChat,
+      chats: state.chats,
+      currentChatId: state.currentChatId,
+      messages: state.messages,
+      loadMessages: state.loadMessages,
+      sendMessage: state.sendMessage,
+      loadDocuments: state.loadDocuments,
+      loadSettings: state.loadSettings,
+      settings: state.settings,
+      isGeneratingResponse: state.isGeneratingResponse,
+      documents: state.documents
+    }))
+  )
 
-  // Create a new chat when component mounts
+  // Get current chat messages
+  const currentMessages = useMemo(
+    () => (currentChatId ? messages[currentChatId] || [] : []),
+    [currentChatId, messages]
+  )
+
+  // Initialize app on component mount
+  useEffect(() => {
+    const initializeChat = async () => {
+      try {
+        // Load documents from the document store
+        await loadDocuments()
+
+        // Fetch settings to get model information
+        await loadSettings()
+
+        // Get available models from settings
+        if (settings.defaultModel) {
+          setModelOptions([
+            {
+              id: settings.defaultModel.model,
+              name: settings.defaultModel.model,
+              provider: settings.defaultModel.provider,
+              description: `${settings.defaultModel.provider} model`
+            }
+          ])
+          setSelectedModel(settings.defaultModel.model)
+        }
+
+        // Convert API documents to DocumentFilter format
+        const filterDocs: DocumentFilter[] = storeDocuments.map((doc) => ({
+          id: doc.id,
+          title: doc.title || 'Unknown document',
+          selected: true,
+          tags: doc.tags || []
+        }))
+
+        setDocuments(filterDocs)
+
+        // Extract all unique tags
+        const tags = Array.from(new Set(filterDocs.flatMap((doc) => doc.tags))).sort()
+        setAllTags(tags)
+      } catch (error) {
+        console.error('Error initializing chat:', error)
+        toast.error('Failed to load chat resources')
+      }
+    }
+
+    initializeChat()
+  }, [loadDocuments, loadSettings, settings.defaultModel, storeDocuments])
+
+  // Create a new chat when component mounts if no current chat exists
   useEffect(() => {
     const createNewChat = async () => {
       try {
-        const result = await window.api.createChat("New Research Chat");
-        if (result.success) {
-          setChatId(result.chat.id);
-        } else {
-          console.error('Error creating chat:', result.error);
-          // Fallback to local ID if API fails
-          setChatId(`chat_${Date.now()}`);
-        }
+        await createChat('New Research Chat')
       } catch (error) {
-        console.error('Error creating chat:', error);
-        // Fallback to local ID if API fails
-        setChatId(`chat_${Date.now()}`);
+        console.error('Error creating chat:', error)
+        toast.error('Failed to create new chat session')
       }
-    };
-    
-    if (!chatId) {
-      createNewChat();
     }
-  }, [chatId])
+
+    if (!currentChatId && chats.length === 0) {
+      createNewChat()
+    } else if (currentChatId && !messages[currentChatId]) {
+      // Load messages for the current chat if they're not loaded yet
+      loadMessages(currentChatId)
+    }
+  }, [currentChatId, createChat, chats.length, messages, loadMessages])
 
   // Scroll to bottom when messages change
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages])
+  }, [currentMessages])
 
   const handleSendMessage = async () => {
-    if (!input.trim() || isLoading || !chatId) return
+    if (!input.trim() || isGeneratingResponse || !currentChatId || !selectedModel) return
 
-    // Add user message to local state immediately
-    const userMessage: ChatMessage = {
-      id: `msg_user_${Date.now()}`,
-      role: 'user',
-      content: input,
-      timestamp: new Date()
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-    setInput('')
-    setIsLoading(true)
+    // Get selected document IDs
+    const selectedDocIds = documents.filter((doc) => doc.selected).map((doc) => doc.id)
 
     try {
-      // Get selected document IDs
-      const selectedDocIds = documents
-        .filter(doc => doc.selected)
-        .map(doc => doc.id);
-      
-      // Configuration for the query
-      const config = {
-        modelConfig: {
-          model: selectedModel,
-          provider: modelOptions.find(m => m.id === selectedModel)?.provider || 'anthropic'
-        }
-      };
-      
-      // Send the query to the backend
-      const result = await window.api.sendQuery(
-        chatId,
-        input,
-        selectedDocIds,
-        config
-      );
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to process query');
-      }
-      
-      // Format the assistant message from the API response
-      const assistantMessage: ChatMessage = {
-        id: result.result.assistantMessageId,
-        role: 'assistant',
-        content: result.result.answer,
-        timestamp: new Date(),
-        citations: result.result.citations.map(citation => ({
-          id: citation.id,
-          documentId: citation.document_id,
-          documentName: documents.find(d => d.id === citation.document_id)?.title || 'Unknown Document',
-          content: citation.text,
-          confidence: citation.confidence
-        })),
-        metadata: {
-          processingTime: result.result.processTime,
-          tokensUsed: result.result.usage.total_tokens,
-          model: result.result.model
-        }
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
+      // Send message using the store method
+      await sendMessage(currentChatId, input, selectedDocIds)
+      setInput('')
     } catch (error) {
-      console.error('Error sending message:', error);
-      toast.error('Failed to generate a response. Please try again.');
-    } finally {
-      setIsLoading(false);
+      console.error('Error sending message:', error)
+      toast.error('Failed to generate a response. Please try again.')
     }
   }
 
@@ -281,25 +213,13 @@ const ChatPage = () => {
     return filterTags.every((tag) => doc.tags.includes(tag))
   })
 
-  // Removed mock response generation functions as we now use the backend API
-
   const clearChat = async () => {
-    setMessages([])
-    
-    // Create a new chat
     try {
-      const result = await window.api.createChat("New Research Chat");
-      if (result.success) {
-        setChatId(result.chat.id);
-      } else {
-        console.error('Error creating new chat:', result.error);
-        // Fallback to local ID if API fails
-        setChatId(`chat_${Date.now()}`);
-      }
+      // Create a new chat
+      await createChat('New Research Chat')
     } catch (error) {
-      console.error('Error creating new chat:', error);
-      // Fallback to local ID if API fails
-      setChatId(`chat_${Date.now()}`);
+      console.error('Error creating new chat:', error)
+      toast.error('Failed to create new chat session')
     }
   }
 
@@ -466,7 +386,7 @@ const ChatPage = () => {
 
         {/* Messages container */}
         <div className="flex-1 overflow-y-auto p-4">
-          {messages.length === 0 ? (
+          {currentMessages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -519,7 +439,7 @@ const ChatPage = () => {
           ) : (
             <div className="space-y-6 max-w-3xl mx-auto">
               <AnimatePresence>
-                {messages.map((message, index) => (
+                {currentMessages.map((message) => (
                   <motion.div
                     key={message.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -587,7 +507,7 @@ const ChatPage = () => {
                                 >
                                   <FileText className="h-3 w-3" />
                                   <span className="truncate max-w-[120px]">
-                                    {citation.documentName}
+                                    {citation.document_id}
                                   </span>
                                 </Badge>
                               ))}
@@ -619,10 +539,10 @@ const ChatPage = () => {
                                           </Button>
                                         </div>
                                         <div className="font-medium mb-1 pr-8">
-                                          {citation.documentName}
+                                          {citation.document_id}
                                         </div>
                                         <div className="text-muted-foreground">
-                                          {citation.content}
+                                          {citation.document_id}
                                         </div>
                                         <div className="mt-2 flex justify-between items-center">
                                           <Badge variant="outline" className="text-xs">
@@ -640,31 +560,12 @@ const ChatPage = () => {
                             </AnimatePresence>
                           </div>
                         )}
-
-                      {/* Metadata */}
-                      {message.role === 'assistant' && message.metadata && (
-                        <div className="flex items-center text-xs text-muted-foreground space-x-2">
-                          <span>{message.metadata.model || 'AI Model'}</span>
-                          <span>•</span>
-                          <span>
-                            {message.metadata.processingTime
-                              ? `${(message.metadata.processingTime / 1000).toFixed(2)}s`
-                              : 'Processing time'}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {message.metadata.tokensUsed
-                              ? `${message.metadata.tokensUsed} tokens`
-                              : 'Tokens used'}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   </motion.div>
                 ))}
               </AnimatePresence>
 
-              {isLoading && (
+              {isGeneratingResponse && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -734,13 +635,13 @@ const ChatPage = () => {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  disabled={isLoading}
+                  disabled={isGeneratingResponse}
                 />
                 <div className="absolute right-3 bottom-3">
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={!input.trim() || isLoading}
+                    disabled={!input.trim() || isGeneratingResponse}
                     onClick={handleSendMessage}
                   >
                     <Send className="h-4 w-4" />

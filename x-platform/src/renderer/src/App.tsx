@@ -7,9 +7,17 @@ import LibraryPage from '@/pages/library-page'
 import ChatPage from '@/pages/chat-page'
 import HistoryPage from '@/pages/history-page'
 import SettingsPage from '@/pages/settings-page'
-import { Toaster } from 'sonner'
+import { useStore } from '@/stores'
+import Loading from './components/loading'
+import { useShallow } from 'zustand/react/shallow'
 
 function App(): JSX.Element {
+  const appStatus = useStore(useShallow((state) => state.appStatus))
+
+  if (appStatus === 'initializing' || appStatus === 'error') {
+    return <Loading />
+  }
+
   return (
     <>
       <Router>
@@ -26,7 +34,6 @@ function App(): JSX.Element {
           </AnimatePresence>
         </Layout>
       </Router>
-      <Toaster />
     </>
   )
 }

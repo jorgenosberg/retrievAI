@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Save,
-  RefreshCw,
   Database,
   Key,
   Home,
@@ -11,10 +10,8 @@ import {
   Braces,
   FileText,
   AlertCircle,
-  Trash2,
   Sparkles,
-  Cpu,
-  Clock
+  Cpu
 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
@@ -44,62 +41,14 @@ import {
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
-
-// Define interfaces
-interface ModelProvider {
-  id: string
-  name: string
-  type: 'openai' | 'anthropic' | 'local' | 'other'
-  models: ModelOption[]
-}
-
-interface ModelOption {
-  id: string
-  name: string
-  maxTokens: number
-  description: string
-  contextLength: number
-  costPer1KTokens?: number
-}
-
-interface VectorStore {
-  id: string
-  name: string
-  embeddings: number
-  lastUpdated: Date
-  documents: number
-  location: string
-}
-
-interface DocumentInfo {
-  id: string
-  title: string
-  type: string
-  path: string
-  chunks: number
-  tokens: number
-  lastProcessed: Date | null
-  status: 'processed' | 'processing' | 'failed' | 'queued'
-  progress?: number
-  tags: string[]
-}
+import { useStore } from '@/stores'
 
 // Default model information - will be replaced with data from the API
 const DEFAULT_MODEL_INFO = {
-  'openai': {
+  openai: {
     models: {
       'gpt-4o': {
         name: 'GPT-4o',
@@ -117,7 +66,7 @@ const DEFAULT_MODEL_INFO = {
       }
     }
   },
-  'anthropic': {
+  anthropic: {
     models: {
       'claude-3-opus-20240229': {
         name: 'Claude 3 Opus',
@@ -143,6 +92,21 @@ const DEFAULT_MODEL_INFO = {
     }
   }
 }
+
+const DEFAULT_AVAILABLE_MODELS = [
+  {
+    provider: 'openai',
+    models: ['gpt-4o', 'gpt-3.5-turbo']
+  },
+  {
+    provider: 'anthropic',
+    models: ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307']
+  },
+  {
+    provider: 'local',
+    models: ['llama-3-8b', 'mistral-7b']
+  }
+]
 
 interface SettingsFormValues {
   // General settings
@@ -180,17 +144,18 @@ interface SettingsFormValues {
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('general')
-  const [openAIEnabled, setOpenAIEnabled] = useState(true)
-  const [anthropicEnabled, setAnthropicEnabled] = useState(true)
-  const [localModelsEnabled, setLocalModelsEnabled] = useState(false)
-  const [documents, setDocuments] = useState<DocumentInfo[]>([])
-  const [vectorStore, setVectorStore] = useState<VectorStore | null>(null)
-  const [isReindexing, setIsReindexing] = useState(false)
+
+  // Replace these local states with store values
+  const { settings, updateSettings, setApiKey } = useStore()
+
+  // Additional local UI states can remain
+  const [openAIEnabled, setOpenAIEnabled] = useState(settings.defaultModel.provider === 'openai')
+  const [anthropicEnabled, setAnthropicEnabled] = useState(
+    settings.defaultModel.provider === 'anthropic'
+  )
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false)
-  const [deleteStoreDialogOpen, setDeleteStoreDialogOpen] = useState(false)
-  const [isLoadingDocuments, setIsLoadingDocuments] = useState(true)
-  const [availableModels, setAvailableModels] = useState<any[]>([])
-  const [storeToDelete, setStoreToDelete] = useState<string | null>(null)
+  const [availableModels, setAvailableModels] = useState(DEFAULT_AVAILABLE_MODELS)
+  const [localModelsEnabled, setLocalModelsEnabled] = useState(false)
 
   const {
     register,
@@ -209,8 +174,8 @@ const SettingsPage = () => {
       openaiApiKey: '••••••••••••••••••••••••••••••',
       anthropicApiKey: '••••••••••••••••••••••••••••••',
 
-      defaultModelProvider: 'anthropic',
-      defaultOpenAIModel: 'gpt-4-turbo',
+      defaultModelProvider: 'openai',
+      defaultOpenAIModel: 'gpt-4o-mini',
       defaultAnthropicModel: 'claude-3-sonnet',
       defaultLocalModel: 'llama-3-8b',
 
@@ -233,339 +198,45 @@ const SettingsPage = () => {
   const selectedProvider = watch('defaultModelProvider')
   const enableLocalModels = watch('enableLocalModels')
 
-  // Load documents, models, and settings on component mount
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoadingDocuments(true)
-
-      try {
-        // Get documents
-        const docResult = await window.api.getAllDocuments()
-        if (docResult.success) {
-          // Convert API documents to DocumentInfo format
-          const documentInfo: DocumentInfo[] = docResult.documents.map((doc: any) => ({
-            id: doc.id,
-            title: doc.title,
-            path: doc.path,
-            type: doc.path.split('.').pop()?.toUpperCase() || 'UNKNOWN',
-            chunks: 0, // We don't have this information from the API yet
-            tokens: 0, // We don't have this information from the API yet
-            lastProcessed: new Date(doc.updated_at),
-            status: 'processed',
-            tags: doc.tags
-          }))
-
-          setDocuments(documentInfo)
-
-          // Calculate estimated chunks for the vector store
-          const estimatedChunks = documentInfo.reduce((total, doc) => {
-            // Estimate chunks based on document type
-            const extension = doc.path.split('.').pop()?.toLowerCase()
-            let multiplier = 5  // Base multiplier
-            
-            if (extension === 'pdf') {
-              multiplier = 25  // PDFs tend to be longer
-            } else if (extension === 'docx' || extension === 'doc') {
-              multiplier = 20  // Word docs
-            } else if (extension === 'md' || extension === 'txt') {
-              multiplier = 5   // Text files are typically smaller
-            }
-            
-            return total + multiplier
-          }, 0)
-          
-          // Create a vector store info object
-          if (documentInfo.length > 0) {
-            setVectorStore({
-              id: 'chroma-default',
-              name: 'ChromaDB Vectorstore',
-              embeddings: estimatedChunks || documentInfo.length * 15,
-              lastUpdated: new Date(),
-              documents: documentInfo.length,
-              location: 'User data directory'
-            })
-          }
-        }
-
-        // Get available models
-        const modelsResult = await window.api.getAvailableModels()
-        if (modelsResult.success) {
-          setAvailableModels(modelsResult.models)
-
-          // Set API availability flags
-          setOpenAIEnabled(modelsResult.models.some((p: any) => p.provider === 'openai'))
-          setAnthropicEnabled(modelsResult.models.some((p: any) => p.provider === 'anthropic'))
-          
-          // Update form based on the active model
-          const activeProvider = modelsResult.models.find((p: any) => p.active)
-          if (activeProvider) {
-            setValue('defaultModelProvider', activeProvider.provider)
-            
-            if (activeProvider.provider === 'openai') {
-              setValue('defaultOpenAIModel', activeProvider.activeModel || 'gpt-4o')
-            } else if (activeProvider.provider === 'anthropic') {
-              setValue('defaultAnthropicModel', activeProvider.activeModel || 'claude-3-sonnet-20240229')
-            } else if (activeProvider.provider === 'local') {
-              setValue('defaultLocalModel', activeProvider.activeModel || 'llama-3-8b')
-              setLocalModelsEnabled(true)
-              setValue('enableLocalModels', true)
-            }
-            
-            // Update temperature if available
-            if (activeProvider.temperature !== undefined) {
-              setValue('temperatureDefault', activeProvider.temperature)
-            }
-            
-            // Update max tokens if available
-            if (activeProvider.maxTokens !== undefined) {
-              setValue('maxTokensPerRequest', activeProvider.maxTokens)
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error)
-        toast.error('Failed to load documents and models')
-      } finally {
-        setIsLoadingDocuments(false)
-      }
-    }
-
-    fetchData()
-  }, [])
-
   // Handle form submission
   const onSubmit = async (data: SettingsFormValues) => {
     try {
-      // Save API keys
+      // Handle API key updates
       if (openAIEnabled && data.openaiApiKey && !data.openaiApiKey.includes('•')) {
-        const result = await window.api.setApiKey('openai', data.openaiApiKey)
-        if (!result.success) {
-          toast.error(`Failed to save OpenAI API key: ${result.error}`)
-          return
-        }
+        await setApiKey('openai', data.openaiApiKey)
       }
 
       if (anthropicEnabled && data.anthropicApiKey && !data.anthropicApiKey.includes('•')) {
-        const result = await window.api.setApiKey('anthropic', data.anthropicApiKey)
-        if (!result.success) {
-          toast.error(`Failed to save Anthropic API key: ${result.error}`)
-          return
+        await setApiKey('anthropic', data.anthropicApiKey)
+      }
+
+      // Update settings in the store
+      await updateSettings({
+        defaultModel: {
+          provider: data.defaultModelProvider as 'openai' | 'anthropic',
+          model:
+            data.defaultModelProvider === 'openai'
+              ? data.defaultOpenAIModel
+              : data.defaultAnthropicModel,
+          temperature: data.temperatureDefault,
+          maxTokens: data.maxTokensPerRequest
+        },
+        embeddingModel: {
+          provider: data.embeddingProvider as 'openai' | 'huggingface',
+          model: data.embeddingModel
+        },
+        ragConfig: {
+          chunkSize: data.chunkSize,
+          chunkOverlap: data.chunkOverlap,
+          similarityThreshold: data.similarityThreshold,
+          maxSources: data.maxSourcesPerResponse
         }
-      }
-
-      // Set default model
-      const modelConfig = {
-        provider: data.defaultModelProvider as any,
-        model:
-          data.defaultModelProvider === 'openai'
-            ? data.defaultOpenAIModel
-            : data.defaultModelProvider === 'anthropic'
-              ? data.defaultAnthropicModel
-              : data.defaultLocalModel,
-        temperature: data.temperatureDefault,
-        maxTokens: data.maxTokensPerRequest
-      }
-
-      const modelResult = await window.api.setDefaultModel(modelConfig)
-      if (!modelResult.success) {
-        toast.error(`Failed to set default model: ${modelResult.error}`)
-        return
-      }
-
-      // Set embedding model
-      const embeddingResult = await window.api.setEmbeddingModel(data.embeddingProvider)
-      if (!embeddingResult.success) {
-        toast.error(`Failed to set embedding model: ${embeddingResult.error}`)
-        return
-      }
+      })
 
       toast.success('Settings saved successfully')
     } catch (error) {
       console.error('Error saving settings:', error)
       toast.error('Failed to save settings')
-    }
-  }
-
-  const refreshVectorStore = async () => {
-    setIsReindexing(true)
-    toast.info('Refreshing vector store. This may take a while.')
-
-    try {
-      // Fetch current documents to update our counts
-      const result = await window.api.getAllDocuments()
-      
-      if (result.success) {
-        // Get total number of chunks from all documents
-        // In a real implementation, we should get this from the backend
-        // but we need to calculate it client-side for now
-        const estimatedChunks = result.documents.reduce((total, doc) => {
-          // Estimate chunks based on document type
-          const extension = doc.path.split('.').pop()?.toLowerCase()
-          let multiplier = 5  // Base multiplier
-          
-          if (extension === 'pdf') {
-            multiplier = 25  // PDFs tend to be longer
-          } else if (extension === 'docx' || extension === 'doc') {
-            multiplier = 20  // Word docs
-          } else if (extension === 'md' || extension === 'txt') {
-            multiplier = 5   // Text files are typically smaller
-          }
-          
-          return total + multiplier
-        }, 0)
-        
-        // Update vector store with fresh data
-        setVectorStore((current) => {
-          if (!current) return null
-          
-          return {
-            ...current,
-            documents: result.documents.length,
-            embeddings: estimatedChunks || result.documents.length * 15,
-            lastUpdated: new Date()
-          }
-        })
-        
-        toast.success('Vector store refreshed successfully')
-      } else {
-        toast.error('Failed to refresh vector store')
-      }
-    } catch (error) {
-      console.error('Error refreshing vector store:', error)
-      toast.error('Failed to refresh vector store')
-    } finally {
-      setIsReindexing(false)
-    }
-  }
-
-  const deleteVectorStore = async (storeId: string) => {
-    setStoreToDelete(storeId)
-    setDeleteStoreDialogOpen(true)
-  }
-
-  const confirmDeleteStore = async () => {
-    if (!storeToDelete) return
-
-    setIsReindexing(true)
-    try {
-      // In a real implementation, we would call an API to delete the vector store
-      // For now, we'll just update the UI state directly
-      toast.info('Deleting vector store, this may take a while...')
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      setVectorStore(null)
-      setDocuments([])
-      setDeleteStoreDialogOpen(false)
-      setStoreToDelete(null)
-      toast.success('Vector store deleted successfully')
-    } catch (error) {
-      console.error('Error deleting vector store:', error)
-      toast.error('Failed to delete vector store')
-    } finally {
-      setIsReindexing(false)
-    }
-  }
-
-  const deleteDocument = async (docId: string) => {
-    try {
-      const result = await window.api.deleteDocument(docId)
-      if (result.success) {
-        // Find the document before removing it
-        const docToDelete = documents.find(doc => doc.id === docId)
-        
-        // Update local state after successful deletion
-        setDocuments((prev) => prev.filter((doc) => doc.id !== docId))
-        toast.success('Document removed from library')
-
-        // Estimate chunks that will be removed
-        let chunkEstimate = 15 // Default estimate
-        if (docToDelete) {
-          const extension = docToDelete.path.split('.').pop()?.toLowerCase()
-          if (extension === 'pdf') {
-            chunkEstimate = 25
-          } else if (extension === 'docx' || extension === 'doc') {
-            chunkEstimate = 20
-          } else if (extension === 'md' || extension === 'txt') {
-            chunkEstimate = 5
-          }
-        }
-        
-        // Update vector store counts
-        if (vectorStore) {
-          setVectorStore({
-            ...vectorStore,
-            documents: vectorStore.documents - 1,
-            embeddings: Math.max(0, vectorStore.embeddings - chunkEstimate),
-            lastUpdated: new Date()
-          })
-        }
-      } else {
-        console.error('Error deleting document:', result.error)
-        toast.error(`Failed to delete document: ${result.error}`)
-      }
-    } catch (error) {
-      console.error('Error deleting document:', error)
-      toast.error('Failed to delete document')
-    }
-  }
-
-  const reprocessDocument = async (docId: string) => {
-    // Mark document as processing
-    setDocuments((prev) =>
-      prev.map((doc) =>
-        doc.id === docId ? { ...doc, status: 'processing' as const, progress: 0 } : doc
-      )
-    )
-
-    toast.info('Document reprocessing started')
-
-    try {
-      // In a real implementation, we would call an API to reprocess the document
-      // For now, just simulate a reprocessing task with progress updates
-      
-      // Simulate progress
-      for (let progress = 0; progress <= 100; progress += 10) {
-        // Update document progress
-        setDocuments((prev) =>
-          prev.map((doc) =>
-            doc.id === docId
-              ? {
-                  ...doc,
-                  status: progress < 100 ? ('processing' as const) : ('processed' as const),
-                  progress: progress < 100 ? progress : undefined,
-                  lastProcessed: progress >= 100 ? new Date() : doc.lastProcessed
-                }
-              : doc
-          )
-        )
-        
-        // Wait a bit before next update
-        if (progress < 100) {
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-      
-      toast.success('Document reprocessed successfully')
-      
-      // Update vector store counts (if this was a real implementation we'd get updated counts from the backend)
-      if (vectorStore) {
-        setVectorStore({
-          ...vectorStore,
-          lastUpdated: new Date()
-        })
-      }
-    } catch (error) {
-      console.error('Error reprocessing document:', error)
-      toast.error('Failed to reprocess document')
-      
-      // Mark document as failed
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          doc.id === docId ? { ...doc, status: 'failed' as const, progress: undefined } : doc
-        )
-      )
     }
   }
 
@@ -826,7 +497,9 @@ const SettingsPage = () => {
                               'flex items-center space-x-2 rounded-md border p-3',
                               selectedProvider === provider.provider && 'border-primary',
                               provider.provider === 'openai' && !openAIEnabled && 'opacity-50',
-                              provider.provider === 'anthropic' && !anthropicEnabled && 'opacity-50',
+                              provider.provider === 'anthropic' &&
+                                !anthropicEnabled &&
+                                'opacity-50',
                               provider.provider === 'local' && !enableLocalModels && 'opacity-50'
                             )}
                           >
@@ -845,10 +518,13 @@ const SettingsPage = () => {
                             >
                               <div className="flex items-center justify-between">
                                 <div className="font-medium">
-                                  {provider.provider === 'openai' ? 'OpenAI' : 
-                                   provider.provider === 'anthropic' ? 'Anthropic' : 
-                                   provider.provider === 'local' ? 'Local Models' : 
-                                   provider.provider}
+                                  {provider.provider === 'openai'
+                                    ? 'OpenAI'
+                                    : provider.provider === 'anthropic'
+                                      ? 'Anthropic'
+                                      : provider.provider === 'local'
+                                        ? 'Local Models'
+                                        : provider.provider}
                                 </div>
                                 {provider.provider === 'openai' && !openAIEnabled && (
                                   <Badge variant="outline">API Key Required</Badge>
@@ -884,11 +560,13 @@ const SettingsPage = () => {
                             </SelectTrigger>
                             <SelectContent>
                               {availableModels
-                                .find(p => p.provider === 'openai')
+                                .find((p) => p.provider === 'openai')
                                 ?.models.map((modelId) => (
                                   <SelectItem key={modelId} value={modelId}>
                                     <div className="flex items-center">
-                                      <span>{DEFAULT_MODEL_INFO.openai.models[modelId]?.name || modelId}</span>
+                                      <span>
+                                        {DEFAULT_MODEL_INFO.openai.models[modelId]?.name || modelId}
+                                      </span>
                                     </div>
                                   </SelectItem>
                                 ))}
@@ -902,16 +580,19 @@ const SettingsPage = () => {
                             <div className="flex flex-wrap gap-3 mt-2">
                               <Badge variant="outline">
                                 Context:{' '}
-                                {DEFAULT_MODEL_INFO.openai.models[watch('defaultOpenAIModel')]
-                                  ?.contextLength?.toLocaleString() || 'N/A'}{' '}
+                                {DEFAULT_MODEL_INFO.openai.models[
+                                  watch('defaultOpenAIModel')
+                                ]?.contextLength?.toLocaleString() || 'N/A'}{' '}
                                 tokens
                               </Badge>
                               {DEFAULT_MODEL_INFO.openai.models[watch('defaultOpenAIModel')]
                                 ?.costPer1KTokens && (
                                 <Badge variant="outline">
                                   Cost: $
-                                  {DEFAULT_MODEL_INFO.openai.models[watch('defaultOpenAIModel')]
-                                    ?.costPer1KTokens}
+                                  {
+                                    DEFAULT_MODEL_INFO.openai.models[watch('defaultOpenAIModel')]
+                                      ?.costPer1KTokens
+                                  }
                                   /1K tokens
                                 </Badge>
                               )}
@@ -934,11 +615,14 @@ const SettingsPage = () => {
                             </SelectTrigger>
                             <SelectContent>
                               {availableModels
-                                .find(p => p.provider === 'anthropic')
+                                .find((p) => p.provider === 'anthropic')
                                 ?.models.map((modelId) => (
                                   <SelectItem key={modelId} value={modelId}>
                                     <div className="flex items-center">
-                                      <span>{DEFAULT_MODEL_INFO.anthropic.models[modelId]?.name || modelId}</span>
+                                      <span>
+                                        {DEFAULT_MODEL_INFO.anthropic.models[modelId]?.name ||
+                                          modelId}
+                                      </span>
                                     </div>
                                   </SelectItem>
                                 ))}
@@ -952,16 +636,20 @@ const SettingsPage = () => {
                             <div className="flex flex-wrap gap-3 mt-2">
                               <Badge variant="outline">
                                 Context:{' '}
-                                {DEFAULT_MODEL_INFO.anthropic.models[watch('defaultAnthropicModel')]
-                                  ?.contextLength?.toLocaleString() || 'N/A'}{' '}
+                                {DEFAULT_MODEL_INFO.anthropic.models[
+                                  watch('defaultAnthropicModel')
+                                ]?.contextLength?.toLocaleString() || 'N/A'}{' '}
                                 tokens
                               </Badge>
                               {DEFAULT_MODEL_INFO.anthropic.models[watch('defaultAnthropicModel')]
                                 ?.costPer1KTokens && (
                                 <Badge variant="outline">
                                   Cost: $
-                                  {DEFAULT_MODEL_INFO.anthropic.models[watch('defaultAnthropicModel')]
-                                    ?.costPer1KTokens}
+                                  {
+                                    DEFAULT_MODEL_INFO.anthropic.models[
+                                      watch('defaultAnthropicModel')
+                                    ]?.costPer1KTokens
+                                  }
                                   /1K tokens
                                 </Badge>
                               )}
@@ -992,36 +680,36 @@ const SettingsPage = () => {
                                     </div>
                                   </SelectItem>
                                 )) || [
-                                  // Fallback local model options if none available from API
-                                  <SelectItem key="llama-3-8b" value="llama-3-8b">
-                                    <div className="flex items-center">
-                                      <span>Llama 3 (8B)</span>
-                                    </div>
-                                  </SelectItem>,
-                                  <SelectItem key="mistral-7b" value="mistral-7b">
-                                    <div className="flex items-center">
-                                      <span>Mistral (7B)</span>
-                                    </div>
-                                  </SelectItem>
-                                ]}
+                                // Fallback local model options if none available from API
+                                <SelectItem key="llama-3-8b" value="llama-3-8b">
+                                  <div className="flex items-center">
+                                    <span>Llama 3 (8B)</span>
+                                  </div>
+                                </SelectItem>,
+                                <SelectItem key="mistral-7b" value="mistral-7b">
+                                  <div className="flex items-center">
+                                    <span>Mistral (7B)</span>
+                                  </div>
+                                </SelectItem>
+                              ]}
                             </SelectContent>
                           </Select>
                           <div className="p-3 rounded-md bg-muted">
                             <div className="text-sm">
-                              {watch('defaultLocalModel') === 'llama-3-8b' 
+                              {watch('defaultLocalModel') === 'llama-3-8b'
                                 ? 'Latest Llama 3 model from Meta, optimized for efficiency and performance at 8B parameters'
                                 : watch('defaultLocalModel') === 'mistral-7b'
-                                ? 'High quality 7B parameter model with strong reasoning capabilities'
-                                : 'Local inference model with no data sharing'}
+                                  ? 'High quality 7B parameter model with strong reasoning capabilities'
+                                  : 'Local inference model with no data sharing'}
                             </div>
                             <div className="flex flex-wrap gap-3 mt-2">
                               <Badge variant="outline">
                                 Context:{' '}
-                                {watch('defaultLocalModel') === 'llama-3-8b' 
-                                  ? '8K' 
-                                  : watch('defaultLocalModel') === 'mistral-7b'
+                                {watch('defaultLocalModel') === 'llama-3-8b'
                                   ? '8K'
-                                  : '4K'}{' '}
+                                  : watch('defaultLocalModel') === 'mistral-7b'
+                                    ? '8K'
+                                    : '4K'}{' '}
                                 tokens
                               </Badge>
                             </div>
@@ -1152,109 +840,6 @@ const SettingsPage = () => {
             {/* Database Settings */}
             <TabsContent value="database" className="space-y-4">
               <Card>
-                <CardHeader>
-                  <CardTitle>Vector Stores</CardTitle>
-                  <CardDescription>Manage your ChromaDB and SQLite vector stores</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    {vectorStore ? (
-                      <Card className="overflow-hidden">
-                        <CardContent className="p-0">
-                          <div className="p-4 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
-                            <div className="space-y-1 flex-1">
-                              <div className="flex items-center">
-                                <h3 className="font-medium">{vectorStore.name}</h3>
-                                <Badge variant="outline" className="ml-2">
-                                  ChromaDB
-                                </Badge>
-                              </div>
-                              <p className="text-sm text-muted-foreground">
-                                {vectorStore.location}
-                              </p>
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-sm">
-                                <span className="flex items-center">
-                                  <Database className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                                  {vectorStore.embeddings.toLocaleString()} embeddings
-                                </span>
-                                <span className="flex items-center">
-                                  <FileText className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                                  {vectorStore.documents.toLocaleString()} documents
-                                </span>
-                                <span className="flex items-center">
-                                  <Clock className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                                  Last updated:{' '}
-                                  {new Date(vectorStore.lastUpdated).toLocaleDateString()}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={isReindexing}
-                                onClick={refreshVectorStore}
-                              >
-                                {isReindexing ? (
-                                  <>
-                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                    Refreshing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <RefreshCw className="h-4 w-4 mr-2" />
-                                    Refresh
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ) : isLoadingDocuments ? (
-                      <div className="flex items-center justify-center p-8">
-                        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
-                      </div>
-                    ) : (
-                      <div className="text-center p-6">
-                        <p className="text-muted-foreground">
-                          No vector stores found. Upload documents to create embeddings.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <Dialog open={deleteStoreDialogOpen} onOpenChange={setDeleteStoreDialogOpen}>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Delete Vector Store</DialogTitle>
-                        <DialogDescription>
-                          Are you sure you want to delete this vector store? This action cannot be
-                          undone and all embeddings will be permanently deleted.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>Warning</AlertTitle>
-                        <AlertDescription>
-                          Deleting this vector store will require re-uploading and re-embedding all
-                          documents associated with it.
-                        </AlertDescription>
-                      </Alert>
-                      <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteStoreDialogOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button variant="destructive" onClick={confirmDeleteStore}>
-                          Delete
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </CardContent>
-              </Card>
-
-              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <div className="space-y-1">
                     <CardTitle>Storage Configuration</CardTitle>
@@ -1325,94 +910,6 @@ const SettingsPage = () => {
 
             {/* Documents Tab */}
             <TabsContent value="documents" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Document Library</CardTitle>
-                  <CardDescription>Manage and view all indexed documents</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[400px] pr-4">
-                    <div className="space-y-2">
-                      {isLoadingDocuments ? (
-                        <div className="flex items-center justify-center p-8">
-                          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
-                        </div>
-                      ) : documents.length === 0 ? (
-                        <div className="text-center p-6">
-                          <p className="text-muted-foreground">
-                            No documents found. Go to the upload page to add documents.
-                          </p>
-                        </div>
-                      ) : (
-                        documents.map((doc) => (
-                          <div key={doc.id} className="border rounded-md overflow-hidden">
-                            <div className="p-3">
-                              <div className="flex items-start justify-between">
-                                <div className="space-y-1">
-                                  <div className="flex items-center">
-                                    <h3 className="font-medium">{doc.title}</h3>
-                                    <Badge
-                                      className="ml-2"
-                                      variant={
-                                        doc.status === 'processed'
-                                          ? 'default'
-                                          : doc.status === 'processing'
-                                            ? 'secondary'
-                                            : doc.status === 'failed'
-                                              ? 'destructive'
-                                              : 'outline'
-                                      }
-                                    >
-                                      {doc.status === 'processed'
-                                        ? 'Processed'
-                                        : doc.status === 'processing'
-                                          ? 'Processing'
-                                          : doc.status === 'failed'
-                                            ? 'Failed'
-                                            : 'Queued'}
-                                    </Badge>
-                                  </div>
-                                  <div className="flex flex-wrap gap-x-4 text-sm text-muted-foreground">
-                                    <span>{doc.type}</span>
-                                    <span>{(doc.path.length / 1024).toFixed(1)} KB (approx)</span>
-                                    {doc.tags.length > 0 && (
-                                      <div className="flex flex-wrap gap-1 mt-1">
-                                        {doc.tags.map((tag) => (
-                                          <Badge key={tag} variant="outline" className="text-xs">
-                                            {tag}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-destructive hover:text-destructive"
-                                    onClick={() => deleteDocument(doc.id)}
-                                    disabled={doc.status === 'processing'}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              {doc.status === 'processed' && doc.lastProcessed && (
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  Last updated: {new Date(doc.lastProcessed).toLocaleString()}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-
               <Card>
                 <CardHeader>
                   <CardTitle>Document Processing</CardTitle>

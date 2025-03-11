@@ -1,55 +1,192 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, File, X, UploadCloud, CheckCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Card } from '@/components/ui/card'
+import useStore from '@/stores/appStore'
 import { toast } from 'sonner'
 
-// Extend the File interface to include path property used in Electron
-interface ElectronFile extends File {
-  path?: string;
+// Add a custom interface for Electron file objects
+interface ElectronFile {
+  name: string
+  type: string
+  path: string
+  size: number
+  lastModified: number
 }
 
-interface FileWithProgress {
+// Define our UI file type
+interface UIFile {
   id: string
-  file: ElectronFile
+  file: ElectronFile | File
+  documentId?: string
   progress: number
   status: 'idle' | 'uploading' | 'success' | 'error'
   error?: string
 }
 
 const UploadPage = () => {
-  const [files, setFiles] = useState<FileWithProgress[]>([])
+  const [files, setFiles] = useState<UIFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const navigate = useNavigate()
+  const progressListenerCleanupRef = useRef<(() => void) | null>(null)
 
-  const handleFileSelect = useCallback((selectedFiles: ElectronFile[]) => {
-    // Filter out unsupported file types or check size limits here
+  // Use the Zustand store
+  const { uploadDocuments, processingProgress, isProcessingDocument } = useStore((state) => ({
+    uploadDocuments: state.uploadDocuments,
+    processingProgress: state.processingProgress,
+    isProcessingDocument: state.isProcessingDocument
+  }))
+
+  // Clean up progress listener when component unmounts
+  useEffect(() => {
+    return () => {
+      if (progressListenerCleanupRef.current) {
+        progressListenerCleanupRef.current()
+        progressListenerCleanupRef.current = null
+      }
+    }
+  }, [])
+
+  // Calculate and update file progress based on Zustand store's processing progress
+  useEffect(() => {
+    if (!processingProgress) return
+
+    setFiles((prevFiles) => {
+      return prevFiles.map((file) => {
+        // Match either by documentId or if we're still in loading stage
+        if (file.documentId && file.documentId === processingProgress.documentId) {
+          // Calculate overall progress based on stage
+          let progress = 0
+          if (processingProgress.stage === 'loading') {
+            progress = processingProgress.progress * 0.2 // Loading = 0-20%
+          } else if (processingProgress.stage === 'splitting') {
+            progress = 20 + processingProgress.progress * 0.3 // Splitting = 20-50%
+          } else if (processingProgress.stage === 'indexing') {
+            progress = 50 + processingProgress.progress * 0.5 // Indexing = 50-100%
+          }
+
+          const updatedProgress = Math.round(progress)
+          // If progress reaches 100%, mark as success
+          const updatedStatus = updatedProgress >= 100 ? 'success' : file.status
+
+          return {
+            ...file,
+            progress: updatedProgress,
+            status: updatedStatus
+          }
+        } else if (
+          processingProgress.documentId === 'loading' &&
+          file.status === 'uploading' &&
+          processingProgress.currentFile === file.file.name
+        ) {
+          // Handle loading stage for files without document ID yet
+          const progress = Math.round(processingProgress.progress * 0.2) // Loading = 0-20%
+
+          return {
+            ...file,
+            progress
+          }
+        }
+        return file
+      })
+    })
+  }, [processingProgress])
+
+  // Check completion status when processing state changes
+  useEffect(() => {
+    // Only run when processing is complete
+    if (!isProcessingDocument) {
+      const uploadingFiles = files.filter((f) => f.status === 'uploading')
+
+      // If there were uploading files and processing is complete, check if they're done
+      if (uploadingFiles.length > 0) {
+        // Mark all files with high progress as success
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.status === 'uploading' && f.progress >= 95
+              ? { ...f, status: 'success', progress: 100 }
+              : f
+          )
+        )
+
+        // Count successful uploads
+        const successCount = files.filter(
+          (f) => f.status === 'success' || (f.status === 'uploading' && f.progress >= 95)
+        ).length
+
+        if (successCount > 0) {
+          toast.success(`Successfully processed ${successCount} of ${files.length} files.`)
+
+          // Redirect to library after successful uploads
+          setTimeout(() => navigate('/library'), 1500)
+        }
+      }
+    }
+  }, [isProcessingDocument, files, navigate])
+
+  // Determine if a file is supported based on extension or MIME type
+  const isFileSupported = useCallback((file: File | ElectronFile): boolean => {
     const allowedTypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'text/plain',
       'text/markdown'
     ]
-    
-    // Allow files with path (from electron dialog) or matching types (from drag & drop)
-    const newFiles = selectedFiles
-      .filter((file) => file.path || allowedTypes.includes(file.type))
-      .map((file) => ({
+
+    const allowedExtensions = ['pdf', 'docx', 'txt', 'md']
+
+    // Check MIME type first
+    if (allowedTypes.includes(file.type)) {
+      return true
+    }
+
+    // If MIME type check fails, check extension
+    const name = file.name
+    const extension = name.split('.').pop()?.toLowerCase() || ''
+
+    return allowedExtensions.includes(extension)
+  }, [])
+
+  // Helper to get MIME type from extension
+  const getMimeTypeFromExtension = useCallback((filename: string): string => {
+    const extension = filename.split('.').pop()?.toLowerCase() || ''
+
+    switch (extension) {
+      case 'pdf':
+        return 'application/pdf'
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      case 'md':
+        return 'text/markdown'
+      case 'txt':
+      default:
+        return 'text/plain'
+    }
+  }, [])
+
+  const handleFileSelect = useCallback(
+    (selectedFiles: (File | ElectronFile)[]) => {
+      // Filter out unsupported files
+      const supportedFiles = selectedFiles.filter(isFileSupported)
+
+      const newFiles = supportedFiles.map((file) => ({
         id: Math.random().toString(36).substring(2),
         file,
         progress: 0,
         status: 'idle' as const
       }))
 
-    if (selectedFiles.length !== newFiles.length) {
-      toast.error('Only PDF, DOCX, TXT and MD files are supported.')
-    }
+      if (selectedFiles.length !== supportedFiles.length) {
+        toast.error('Only PDF, DOCX, TXT and MD files are supported.')
+      }
 
-    setFiles((prev) => [...prev, ...newFiles])
-  }, [])
+      setFiles((prev) => [...prev, ...newFiles])
+    },
+    [isFileSupported]
+  )
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -66,12 +203,8 @@ const UploadPage = () => {
       setIsDragging(false)
 
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        // Convert the FileList to an array of ElectronFile objects
-        const droppedFiles = Array.from(e.dataTransfer.files).map(file => {
-          // Standard drag & drop file doesn't have a path, but we need to cast to our interface
-          return file as ElectronFile
-        })
-        
+        // Convert the FileList to an array of File objects
+        const droppedFiles = Array.from(e.dataTransfer.files)
         handleFileSelect(droppedFiles)
       }
     },
@@ -81,41 +214,45 @@ const UploadPage = () => {
   const handleBrowseFiles = useCallback(async () => {
     try {
       // Use Electron's dialog through our preload API
-      const result = await window.api.selectDocuments()
-      
-      if (result.success && result.filePaths.length > 0) {
-        // Create File-like objects from the file paths
-        const selectedFiles = result.filePaths.map(filePath => {
+      const filePaths = await window.electronAPI.dialog.openFileDialog({
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'txt', 'md'] }]
+      })
+
+      if (filePaths && filePaths.length > 0) {
+        // Create ElectronFile objects from the file paths
+        const selectedFiles = filePaths.map((filePath: string): ElectronFile => {
           const name = filePath.split('/').pop() || filePath.split('\\').pop() || filePath
-          const extension = name.split('.').pop()?.toLowerCase() || ''
-          
-          // Map extension to MIME type
-          let type = 'text/plain'
-          if (extension === 'pdf') type = 'application/pdf'
-          else if (extension === 'docx') type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-          else if (extension === 'md') type = 'text/markdown'
-          
-          // Create a File-like object for UI rendering
-          // In Electron, we use a custom object rather than the File constructor
+
           return {
             name,
-            type,
+            type: getMimeTypeFromExtension(name),
             path: filePath,
-            size: 0, // Size will be unknown until we read the file
+            size: 0, // Size will be determined by the backend
             lastModified: Date.now()
-          } as ElectronFile
+          }
         })
-        
+
         handleFileSelect(selectedFiles)
       }
     } catch (error) {
       console.error('Error selecting files:', error)
       toast.error('Failed to select files')
     }
-  }, [handleFileSelect])
+  }, [handleFileSelect, getMimeTypeFromExtension])
 
   const handleRemoveFile = (id: string) => {
     setFiles(files.filter((file) => file.id !== id))
+  }
+
+  const getFilePath = (file: File | ElectronFile): string | null => {
+    // For ElectronFile objects, the path is directly accessible
+    if ('path' in file && typeof file.path === 'string') {
+      return file.path
+    }
+
+    // For regular File objects from drag & drop, we can't get the path
+    return null
   }
 
   const handleUpload = async () => {
@@ -124,7 +261,7 @@ const UploadPage = () => {
       return
     }
 
-    // Update all files to uploading status
+    // Update all idle files to uploading status
     setFiles((prev) =>
       prev.map((file) => ({
         ...file,
@@ -132,73 +269,40 @@ const UploadPage = () => {
       }))
     )
 
-    // Process uploads one by one
+    // Group files by status and process only the uploading ones
     for (const fileData of files.filter((f) => f.status === 'uploading')) {
       try {
-        // Start progress indicator
-        updateFileProgress(fileData.id, 10)
-        
         // Get the file path
-        if (!fileData.file.path) {
-          throw new Error('File path not available. This application only supports selecting files through the file browser.')
+        const filePath = getFilePath(fileData.file)
+
+        if (!filePath) {
+          throw new Error(
+            'File path not available. This application only supports selecting files through the file browser.'
+          )
         }
-        
-        const filePath = fileData.file.path
-        
-        // Update progress
-        updateFileProgress(fileData.id, 30)
-        
-        // Tags - in a real app, you would get these from user input
-        const tags: string[] = []
-        
-        // Call the upload API
-        updateFileProgress(fileData.id, 50)
-        const result = await window.api.uploadDocuments([filePath], tags)
-        
-        if (!result.success) {
-          throw new Error(result.error || 'Upload failed')
-        }
-        
-        // Mark file as success once done
-        setFiles((prev) =>
-          prev.map((f) => (f.id === fileData.id ? { ...f, status: 'success', progress: 100 } : f))
-        )
+
+        const tags: string[] = [] // In a real app, get these from user input
+
+        // Process document - the store's uploadDocuments handles progress tracking
+        await uploadDocuments([filePath], tags)
+
+        // Note: documentId will be assigned through the progress events
       } catch (error) {
         console.error('Error uploading file:', error)
-        // Handle errors
+        // Handle errors by updating the file status
         setFiles((prev) =>
           prev.map((f) =>
-            f.id === fileData.id ? { 
-              ...f, 
-              status: 'error', 
-              error: error instanceof Error ? error.message : 'Upload failed' 
-            } : f
+            f.id === fileData.id
+              ? {
+                  ...f,
+                  status: 'error',
+                  error: error instanceof Error ? error.message : 'Upload failed'
+                }
+              : f
           )
         )
       }
     }
-
-    // Check if all files are processed
-    const allDone = files.every((f) => f.status === 'success' || f.status === 'error')
-    if (allDone) {
-      const successCount = files.filter((f) => f.status === 'success').length
-
-      if (successCount > 0) {
-        toast.success(`Successfully processed ${successCount} of ${files.length} files.`)
-      
-        // Redirect to library after some time if at least one file was successful
-        setTimeout(() => navigate('/library'), 1500)
-      } else {
-        toast.error('Failed to process any files.')
-      }
-    }
-  }
-
-  // Update progress for a specific file
-  const updateFileProgress = (fileId: string, progress: number) => {
-    setFiles((prev) => 
-      prev.map((f) => (f.id === fileId ? { ...f, progress } : f))
-    )
   }
 
   return (
@@ -252,7 +356,12 @@ const UploadPage = () => {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Selected Files</h2>
-            <Button variant="ghost" size="sm" onClick={() => setFiles([])}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setFiles([])}
+              disabled={isProcessingDocument || files.some((f) => f.status === 'uploading')}
+            >
               Clear all
             </Button>
           </div>
@@ -273,9 +382,9 @@ const UploadPage = () => {
                       <div>
                         <p className="font-medium truncate max-w-md">{fileData.file.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {fileData.file.size > 0 
-                            ? `${(fileData.file.size / 1024 / 1024).toFixed(2)} MB` 
-                            : fileData.file.path}
+                          {fileData.file.size > 0
+                            ? `${(fileData.file.size / 1024 / 1024).toFixed(2)} MB`
+                            : getFilePath(fileData.file) || 'Unknown path'}
                         </p>
                       </div>
                     </div>
@@ -321,7 +430,9 @@ const UploadPage = () => {
           <div className="flex justify-end">
             <Button
               onClick={handleUpload}
-              disabled={files.filter((f) => f.status === 'idle').length === 0}
+              disabled={
+                files.filter((f) => f.status === 'idle').length === 0 || isProcessingDocument
+              }
             >
               <Upload className="h-4 w-4 mr-2" />
               Upload Files

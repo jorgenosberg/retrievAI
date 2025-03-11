@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -17,6 +16,8 @@ import {
 import { useTheme } from '@/theme/theme-provider'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Toaster } from '@/components/ui/sonner'
+import { useState } from 'react'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -39,9 +40,9 @@ const Layout = ({ children }: LayoutProps) => {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Mobile sidebar toggle */}
-      <div className="lg:hidden fixed top-4 left-4 z-40">
+      <div className={cn('lg:hidden fixed top-4 left-4 z-40', sidebarOpen && 'hidden')}>
         <Button
-          variant="ghost"
+          variant="outline"
           size="icon"
           onClick={() => setSidebarOpen(!sidebarOpen)}
           aria-label="Toggle menu"
@@ -63,8 +64,17 @@ const Layout = ({ children }: LayoutProps) => {
         }}
       >
         <div className="flex h-full flex-col">
-          <div className="flex h-16 items-center border-b px-4">
+          <div className="flex h-16 items-center justify-between border-b px-4">
             <h1 className="text-xl font-bold">RetrievAI</h1>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Toggle menu"
+              className="lg:hidden"
+            >
+              {<X size={20} />}
+            </Button>
           </div>
           <nav className="flex-1 space-y-1 px-2 py-4">
             {navItems.map((item) => {
@@ -131,6 +141,9 @@ const Layout = ({ children }: LayoutProps) => {
       <main className="flex-1 overflow-auto">
         <div className="container mx-auto p-6">{children}</div>
       </main>
+
+      {/* Toast system */}
+      <Toaster />
     </div>
   )
 }

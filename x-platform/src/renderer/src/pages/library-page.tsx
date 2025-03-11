@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search,
   Filter,
@@ -47,21 +47,13 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useStore } from '@/stores'
 import { toast } from 'sonner'
 
-// Document structure to match our API
-interface Document {
-  id: string
-  title: string // This will be used as name in the UI
-  path: string
-  tags: string[]
-  created_at: string // This will be used as date in the UI
-  updated_at: string
-}
-
 const LibraryPage = () => {
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [loading, setLoading] = useState(true)
+  // Use document store
+  const { documents, loadDocuments, deleteDocument } = useStore()
+
   const [selectedDocs, setSelectedDocs] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'size'>('date')
@@ -71,61 +63,33 @@ const LibraryPage = () => {
   // Get all unique tags
   const allTags = Array.from(new Set(documents.flatMap((doc) => doc.tags))).sort()
 
+  // Re-fetch documents when the component mounts
   useEffect(() => {
-    // Fetch documents from the backend API
-    const fetchDocuments = async () => {
-      try {
-        const result = await window.api.getAllDocuments();
-        if (result.success) {
-          setDocuments(result.documents);
-        } else {
-          console.error('Error fetching documents:', result.error);
-          toast.error('Failed to load documents');
-        }
-      } catch (error) {
-        console.error('Error fetching documents:', error);
-        toast.error('Failed to load documents');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchDocuments();
-  }, [])
+    loadDocuments()
+  }, [loadDocuments])
 
   const handleDeleteDocuments = async () => {
     if (selectedDocs.length === 0) return
 
     // Delete one by one
-    let successCount = 0;
+    let successCount = 0
     for (const docId of selectedDocs) {
       try {
-        const result = await window.api.deleteDocument(docId);
-        if (result.success) {
-          successCount++;
-        } else {
-          console.error(`Error deleting document ${docId}:`, result.error);
-          toast.error(`Failed to delete document: ${result.error}`);
-        }
+        await deleteDocument(docId)
+        successCount++
       } catch (error) {
-        console.error(`Error deleting document ${docId}:`, error);
+        console.error(`Error deleting document ${docId}:`, error)
+        toast.error(
+          `Failed to delete document: ${error instanceof Error ? error.message : 'Unknown error'}`
+        )
       }
     }
-    
+
     if (successCount > 0) {
-      // Refresh document list
-      try {
-        const result = await window.api.getAllDocuments();
-        if (result.success) {
-          setDocuments(result.documents);
-          toast.info(`${successCount} document(s) have been removed from the library.`);
-        }
-      } catch (error) {
-        console.error('Error refreshing documents:', error);
-      }
+      toast.success(`${successCount} document(s) have been removed from the library.`)
     }
-    
-    setSelectedDocs([]);
+
+    setSelectedDocs([])
   }
 
   const handleSelectAll = (checked: boolean) => {
@@ -165,7 +129,7 @@ const LibraryPage = () => {
   const filteredDocuments = documents
     .filter((doc) => {
       // Text search
-      const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase())
 
       // Tag filtering
       const matchesTags =
@@ -177,13 +141,15 @@ const LibraryPage = () => {
       // Sorting
       if (sortBy === 'date') {
         return sortDirection === 'asc'
-          ? new Date(a.date).getTime() - new Date(b.date).getTime()
-          : new Date(b.date).getTime() - new Date(a.date).getTime()
+          ? new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
+          : new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
       } else if (sortBy === 'name') {
-        return sortDirection === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
+        return sortDirection === 'asc'
+          ? a.title.localeCompare(b.title)
+          : b.title.localeCompare(a.title)
       } else {
         // size
-        return sortDirection === 'asc' ? a.size - b.size : b.size - a.size
+        return sortDirection === 'asc' ? a.file_size - b.file_size : b.file_size - a.file_size
       }
     })
 
@@ -217,14 +183,6 @@ const LibraryPage = () => {
         stiffness: 100
       }
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
-      </div>
-    )
   }
 
   return (
@@ -435,7 +393,7 @@ const LibraryPage = () => {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
                         onClick={() => {
-                          toast.success(`${doc.name} has been downloaded.`)
+                          toast.success(`${doc.title} has been downloaded.`)
                         }}
                       >
                         <Download className="mr-2 h-4 w-4" />

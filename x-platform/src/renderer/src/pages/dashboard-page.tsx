@@ -11,34 +11,91 @@ import {
   CardTitle
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { useStore } from '@/stores'
+import { useShallow } from 'zustand/react/shallow'
 
-// Mock data - would be replaced with actual backend calls
-const mockStats = {
-  documentsCount: 32,
-  chatCount: 15,
-  recentDocuments: [
-    { id: '1', name: 'Machine Learning Survey.pdf', date: '2025-02-15' },
-    { id: '2', name: 'Neural Networks Overview.pdf', date: '2025-02-10' },
-    { id: '3', name: 'Transformers Architecture.pdf', date: '2025-02-08' }
-  ],
-  recentChats: [
-    { id: '1', title: 'Comparing ML Frameworks', date: '2025-02-20' },
-    { id: '2', title: 'Neural Network Training', date: '2025-02-18' }
-  ]
+interface Document {
+  id: string
+  name: string
+  date: string
+}
+
+interface Chat {
+  id: string
+  title: string
+  date: string
+}
+
+interface DashboardStats {
+  documentsCount: number
+  chatCount: number
+  recentDocuments: Document[]
+  recentChats: Chat[]
 }
 
 const DashboardPage = () => {
-  const [stats, setStats] = useState(mockStats)
+  const [stats, setStats] = useState<DashboardStats>({
+    documentsCount: 0,
+    chatCount: 0,
+    recentDocuments: [],
+    recentChats: []
+  })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    // Simulate loading data
-    const timer = setTimeout(() => {
-      setLoading(false)
-    }, 800)
+  // Use stores for data fetching
+  const { documents, loadDocuments, chats, loadChats } = useStore(
+    useShallow((state) => ({
+      documents: state.documents,
+      loadDocuments: state.loadDocuments,
+      chats: state.chats,
+      loadChats: state.loadChats
+    }))
+  )
 
-    return () => clearTimeout(timer)
-  }, [])
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        // Load documents from the document store
+        await loadDocuments()
+
+        // Load chats from the chat store
+        await loadChats()
+
+        // Process document data for display
+        const recentDocuments = documents
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 3)
+          .map((doc) => ({
+            id: doc.id,
+            name: doc.title,
+            date: new Date(doc.created_at).toISOString().split('T')[0]
+          }))
+
+        // Process chat data for display
+        const recentChats = chats
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 2)
+          .map((chat) => ({
+            id: chat.id,
+            title: chat.title || `Chat ${chat.id.substring(0, 8)}`,
+            date: new Date(chat.created_at).toISOString().split('T')[0]
+          }))
+
+        setStats({
+          documentsCount: documents.length,
+          chatCount: chats.length,
+          recentDocuments,
+          recentChats
+        })
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchStats()
+  }, [loadDocuments, loadChats, documents, chats])
 
   const containerVariants = {
     hidden: { opacity: 0 },

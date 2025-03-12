@@ -131,36 +131,37 @@ export const DocumentProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         // Register for progress updates
         window.electronAPI.documents.onProcessingProgress((event: any) => {
-          const { documentId, stage, progress, filePath } = event
+          const { documentId, stage, progress, currentFile } = event
 
           setProcessingProgress({
             documentId,
             stage,
             progress,
-            currentFile: filePath
+            currentFile
           })
 
           // Update individual file progress if we can match the file
-          if (filePath) {
-            setFileUploads((prevUploads) => {
-              const newUploads = { ...prevUploads }
+          setFileUploads((prevUploads) => {
+            const newUploads = { ...prevUploads }
 
-              // Find the file by path
-              Object.keys(newUploads).forEach((fileId) => {
-                const upload = newUploads[fileId]
-                if (upload.filePath === filePath) {
-                  newUploads[fileId] = {
-                    ...upload,
-                    stage,
-                    progress: Math.max(upload.progress, progress),
-                    documentId
-                  }
+            // Find the file by documentId first (more reliable) or by path
+            Object.keys(newUploads).forEach((fileId) => {
+              const upload = newUploads[fileId]
+              if (
+                (documentId && upload.documentId === documentId) ||
+                (currentFile && upload.filePath === currentFile)
+              ) {
+                newUploads[fileId] = {
+                  ...upload,
+                  stage,
+                  progress: progress, // Use the actual progress value
+                  documentId: documentId || upload.documentId
                 }
-              })
-
-              return newUploads
+              }
             })
-          }
+
+            return newUploads
+          })
         })
 
         // Send the files for processing

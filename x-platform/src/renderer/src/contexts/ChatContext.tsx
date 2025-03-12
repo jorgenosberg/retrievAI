@@ -1,4 +1,11 @@
-import React, { createContext, useState, useContext, useCallback, ReactNode } from 'react'
+import React, {
+  createContext,
+  useState,
+  useContext,
+  useCallback,
+  ReactNode,
+  useEffect
+} from 'react'
 import { Chat, ChatMessage } from '@/types'
 import { ChatContextType } from './types'
 
@@ -15,6 +22,95 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [currentChatId, setCurrentChatId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({})
   const [isGeneratingResponse, setIsGeneratingResponse] = useState(false)
+  const [streamingEnabled, setStreamingEnabled] = useState(true)
+
+  // Load streaming preference from settings on mount
+  useEffect(() => {
+    const loadStreamingPreference = async () => {
+      try {
+        const enabled = await window.electronAPI.settings.getStreamingEnabled()
+        setStreamingEnabled(enabled)
+      } catch (error) {
+        console.error('Failed to load streaming preference:', error)
+        // Default to enabled if there's an error
+        setStreamingEnabled(true)
+      }
+    }
+
+    loadStreamingPreference()
+  }, [])
+
+  // Set up streaming event listeners
+  useEffect(() => {
+    // Subscribe to streaming events
+    const unsubStreamChunk = window.electronAPI.chats.onStreamChunk((data) => {
+      const { chatId, messageId, chunk } = data
+
+      setMessages((prev) => {
+        const chatMessages = [...(prev[chatId] || [])]
+        const messageIndex = chatMessages.findIndex((msg) => msg.id === messageId)
+
+        if (messageIndex !== -1) {
+          // Update the existing message with new content
+          const updatedMessage = {
+            ...chatMessages[messageIndex],
+            content: chatMessages[messageIndex].content + chunk
+          }
+
+          chatMessages[messageIndex] = updatedMessage
+
+          return {
+            ...prev,
+            [chatId]: chatMessages
+          }
+        }
+
+        return prev
+      })
+    })
+
+    // Handle stream completion
+    const unsubStreamComplete = window.electronAPI.chats.onStreamComplete((data) => {
+      const { chatId, messageId, citations } = data
+
+      setMessages((prev) => {
+        const chatMessages = [...(prev[chatId] || [])]
+        const messageIndex = chatMessages.findIndex((msg) => msg.id === messageId)
+
+        if (messageIndex !== -1) {
+          // Update the message with citations
+          const updatedMessage = {
+            ...chatMessages[messageIndex],
+            citations: citations
+          }
+
+          chatMessages[messageIndex] = updatedMessage
+
+          return {
+            ...prev,
+            [chatId]: chatMessages
+          }
+        }
+
+        return prev
+      })
+
+      setIsGeneratingResponse(false)
+    })
+
+    // Handle stream errors
+    const unsubStreamError = window.electronAPI.chats.onStreamError((data) => {
+      console.error('Streaming error:', data)
+      setIsGeneratingResponse(false)
+    })
+
+    // Cleanup
+    return () => {
+      unsubStreamChunk()
+      unsubStreamComplete()
+      unsubStreamError()
+    }
+  }, [])
 
   // Actions
   const loadChats = useCallback(async (page = 0, limit = 20) => {
@@ -36,6 +132,11 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Failed to load chats:', error)
       return { chats: [], count: 0 }
     }
+  }, [])
+
+  // Toggle streaming
+  const toggleStreaming = useCallback(() => {
+    setStreamingEnabled((prev) => !prev)
   }, [])
 
   // Load next page of chats
@@ -101,6 +202,9 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const sendMessage = useCallback(
     async (chatId: string, content: string, documentIds: string[]) => {
       try {
+        // Show loading indicator for AI response
+        setIsGeneratingResponse(true)
+
         // Optimistically update UI with user message
         const userMessage: ChatMessage = {
           id: `temp-${Date.now()}`,
@@ -116,49 +220,76 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           [chatId]: [...(prev[chatId] || []), userMessage]
         }))
 
-        // Show loading indicator for AI response
-        setIsGeneratingResponse(true)
+        if (streamingEnabled) {
+          // Streaming approach
+          // Start the streaming process
+          const { userMessageId, assistantMessageId } =
+            await window.electronAPI.chats.sendQueryStreaming(chatId, content, documentIds)
 
-        // Add a temp loading message
-        const tempAiMessage: ChatMessage = {
-          id: `temp-ai-${Date.now()}`,
-          chat_id: chatId,
-          role: 'assistant',
-          content: '...',
-          timestamp: new Date().toISOString(),
-          sources: []
+          // Replace temp user message with actual message
+          setMessages((prev) => {
+            const chatMessages = [...(prev[chatId] || [])]
+            const userIndex = chatMessages.findIndex((msg) => msg.id === userMessage.id)
+
+            if (userIndex !== -1) {
+              // Replace with real user message
+              chatMessages[userIndex] = {
+                id: userMessageId,
+                chat_id: chatId,
+                role: 'user',
+                content,
+                timestamp: new Date().toISOString(),
+                sources: []
+              }
+            }
+
+            // Add empty assistant message that will be streamed to
+            chatMessages.push({
+              id: assistantMessageId,
+              chat_id: chatId,
+              role: 'assistant',
+              content: '',
+              timestamp: new Date().toISOString(),
+              sources: []
+            })
+
+            return {
+              ...prev,
+              [chatId]: chatMessages
+            }
+          })
+
+          // Note: The actual content streaming is handled by the useEffect listeners
+        } else {
+          // Non-streaming approach
+          // Send to backend
+          const { userMessage: savedUserMessage, assistantMessage: savedAssistantMessage } =
+            await window.electronAPI.chats.sendQuery(chatId, content, documentIds)
+
+          // Update with real messages
+          setMessages((prev) => {
+            const chatMessages = [...(prev[chatId] || [])]
+            // Replace temporary messages with saved ones
+            const updatedMessages = chatMessages
+              .filter((msg) => msg.id !== userMessage.id)
+              .concat([savedUserMessage, savedAssistantMessage])
+
+            return {
+              ...prev,
+              [chatId]: updatedMessages
+            }
+          })
+
+          // Complete
+          setIsGeneratingResponse(false)
         }
-
-        setMessages((prev) => ({
-          ...prev,
-          [chatId]: [...(prev[chatId] || []), tempAiMessage]
-        }))
-
-        // Send to backend
-        const { userMessage: savedUserMessage, assistantMessage: savedAssistantMessage } =
-          await window.electronAPI.chats.sendQuery(chatId, content, documentIds)
-
-        // Update with real messages
-        setMessages((prev) => {
-          const chatMessages = [...(prev[chatId] || [])]
-          // Replace temporary messages with saved ones
-          const updatedMessages = chatMessages
-            .filter((msg) => msg.id !== userMessage.id && msg.id !== tempAiMessage.id)
-            .concat([savedUserMessage, savedAssistantMessage])
-
-          return {
-            ...prev,
-            [chatId]: updatedMessages
-          }
-        })
       } catch (error) {
         console.error(`Failed to send message to chat ${chatId}:`, error)
-        throw error
-      } finally {
         setIsGeneratingResponse(false)
+        throw error
       }
     },
-    []
+    [streamingEnabled]
   )
 
   // Delete a chat
@@ -197,8 +328,10 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     currentPage,
     pageSize,
     currentChatId,
+    streamingEnabled,
     messages,
     isGeneratingResponse,
+    toggleStreaming,
     loadChats,
     loadNextPage,
     loadPreviousPage,

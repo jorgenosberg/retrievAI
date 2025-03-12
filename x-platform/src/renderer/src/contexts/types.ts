@@ -56,6 +56,7 @@ export interface ChatContextType {
   currentChatId: string | null
   messages: Record<string, ChatMessage[]>
   isGeneratingResponse: boolean
+  streamingEnabled: boolean
   loadChats: (page?: number, limit?: number) => Promise<{ chats: Chat[]; count: number }>
   loadNextPage: () => Promise<{ chats: Chat[]; count: number }>
   loadPreviousPage: () => Promise<{ chats: Chat[]; count: number }>
@@ -63,6 +64,7 @@ export interface ChatContextType {
   loadMessages: (chatId: string) => Promise<void>
   sendMessage: (chatId: string, content: string, documentIds: string[]) => Promise<void>
   deleteChat: (id: string) => Promise<void>
+  toggleStreaming: () => void
 }
 
 // Settings state slice

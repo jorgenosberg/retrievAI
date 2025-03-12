@@ -24,7 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const now = Date.now()
         // Only update UI max once per 250ms or if progress is 100% (complete)
         if (
-          now - lastUpdate > 250 ||
+          now - lastUpdate > 150 ||
           progress.progress === 100 ||
           progress.progress !== lastProgress
         ) {
@@ -51,12 +51,42 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getMessages: (chatId: string) => ipcRenderer.invoke('chats:getMessages', chatId),
     sendQuery: (chatId: string, query: string, documentIds: string[], config: any = {}) =>
       ipcRenderer.invoke('chats:sendQuery', chatId, query, documentIds, config),
+    sendQueryStreaming: (chatId: string, query: string, documentIds: string[], config: any = {}) =>
+      ipcRenderer.invoke('chats:sendQueryStreaming', chatId, query, documentIds, config),
+    onStreamChunk: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => {
+        callback(data)
+      }
+      ipcRenderer.on('chat:streamChunk', listener)
+      return () => {
+        ipcRenderer.off('chat:streamChunk', listener)
+      }
+    },
+    onStreamComplete: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => {
+        callback(data)
+      }
+      ipcRenderer.on('chat:streamComplete', listener)
+      return () => {
+        ipcRenderer.off('chat:streamComplete', listener)
+      }
+    },
+    onStreamError: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => {
+        callback(data)
+      }
+      ipcRenderer.on('chat:streamError', listener)
+      return () => {
+        ipcRenderer.off('chat:streamError', listener)
+      }
+    },
     delete: (id: string) => ipcRenderer.invoke('chats:delete', id)
   },
 
   // Settings operations
   settings: {
     getAll: () => ipcRenderer.invoke('settings:getAll'),
+    getStreamingEnabled: () => ipcRenderer.invoke('settings:getStreamingEnabled'),
     update: (settings: any) => ipcRenderer.invoke('settings:update', settings),
     setApiKey: (provider: string, key: string) =>
       ipcRenderer.invoke('settings:setApiKey', provider, key)

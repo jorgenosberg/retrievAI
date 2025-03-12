@@ -420,6 +420,49 @@ export class DatabaseService {
     return stmt.all() as Setting[]
   }
 
+  updateMessage(message: ChatMessage): void {
+    const { id, content, citations } = message
+
+    // Begin transaction
+    this.db.transaction(() => {
+      // Update the message content
+      const updateStmt = this.db.prepare(`
+      UPDATE messages
+      SET content = ?
+      WHERE id = ?
+    `)
+      updateStmt.run(content, id)
+
+      // If there are citations, update them
+      if (citations && citations.length > 0) {
+        // First delete existing citations for this message
+        const deleteStmt = this.db.prepare(`
+        DELETE FROM citations
+        WHERE message_id = ?
+      `)
+        deleteStmt.run(id)
+
+        // Then insert the new citations
+        const citationStmt = this.db.prepare(`
+        INSERT INTO citations (id, message_id, citation_number, document_id, document_title, text, confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+
+        for (const citation of citations) {
+          citationStmt.run(
+            citation.id,
+            citation.message_id,
+            citation.citation_number,
+            citation.document_id,
+            citation.document_title,
+            citation.text,
+            citation.confidence
+          )
+        }
+      }
+    })()
+  }
+
   // Transaction support
   transaction<T>(fn: () => T): T {
     return this.db.transaction(fn)()

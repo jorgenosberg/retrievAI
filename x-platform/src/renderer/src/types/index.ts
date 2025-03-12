@@ -107,10 +107,20 @@ export interface ElectronAPI {
       usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
       model: string
     }>
+    sendQueryStreaming: (
+      chatId: string,
+      query: string,
+      documentIds: string[],
+      config?: any
+    ) => Promise<any>
+    onStreamChunk: (callback: (data: any) => void) => () => void
+    onStreamComplete: (callback: (data: any) => void) => () => void
+    onStreamError: (callback: (error: any) => void) => () => void
     delete: (id: string) => Promise<void>
   }
   settings: {
     getAll: () => Promise<Settings>
+    getStreamingEnabled: () => Promise<boolean>
     update: (settings: Partial<Settings>) => Promise<boolean>
     setApiKey: (provider: string, key: string) => Promise<boolean>
   }

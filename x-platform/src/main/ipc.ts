@@ -13,7 +13,7 @@ export function setupIpcHandlers(
   ipcMain.handle('documents:getPage', async (_event, limit = 20, offset = 0) => {
     return await documentService.getDocuments(limit, offset)
   })
-  
+
   ipcMain.handle('documents:getCount', async () => {
     return await documentService.getDocumentCount()
   })
@@ -40,7 +40,7 @@ export function setupIpcHandlers(
   ipcMain.handle('chats:getPage', async (_event, limit = 20, offset = 0) => {
     return await chatService.getChats(limit, offset)
   })
-  
+
   ipcMain.handle('chats:getCount', async () => {
     return await chatService.getChatCount()
   })
@@ -78,6 +78,36 @@ export function setupIpcHandlers(
     }
   })
 
+  // New streaming query handler
+  ipcMain.handle('chats:sendQueryStreaming', async (_event, chatId, query, documentIds, config) => {
+    // Set up streaming
+    chatService.on('streamChunk', (data) => {
+      mainWindow.webContents.send('chat:streamChunk', data)
+    })
+
+    chatService.on('streamComplete', (data) => {
+      mainWindow.webContents.send('chat:streamComplete', data)
+    })
+
+    chatService.on('streamError', (data) => {
+      mainWindow.webContents.send('chat:streamError', data)
+    })
+
+    // Start streaming
+    const { userMessageId, assistantMessageId } = await chatService.sendQueryStreaming(
+      chatId,
+      query,
+      documentIds,
+      config
+    )
+
+    // Return message IDs immediately so frontend can start displaying
+    return {
+      userMessageId,
+      assistantMessageId
+    }
+  })
+
   ipcMain.handle('chats:delete', async (_event, id) => {
     return await chatService.deleteChat(id)
   })
@@ -85,6 +115,11 @@ export function setupIpcHandlers(
   // Settings operations
   ipcMain.handle('settings:getAll', async () => {
     return settingsService.getAllSettings()
+  })
+
+  ipcMain.handle('settings:getStreamingEnabled', async () => {
+    // Check if streaming is enabled in settings
+    return settingsService.getAppSetting('streamingEnabled', true)
   })
 
   ipcMain.handle('settings:update', async (_event, newSettings) => {

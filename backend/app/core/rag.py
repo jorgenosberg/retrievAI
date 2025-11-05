@@ -9,13 +9,13 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, AsyncIterator
 
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_classic.chains.retrieval import create_retrieval_chain
 from langchain_openai import ChatOpenAI
 from sqlmodel import select
 
 from app.config import get_settings
-from app.db.session import get_session
+from app.db.session import AsyncSessionLocal
 from app.db.models import AppSettings
 from app.core.prompts import CHAT_PROMPT, DOCUMENT_PROMPT
 from app.core.vectorstore import get_retriever
@@ -34,7 +34,7 @@ async def get_chat_llm(streaming: bool = True) -> ChatOpenAI:
     Returns:
         ChatOpenAI instance
     """
-    async with get_session() as session:
+    async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(AppSettings).where(AppSettings.key == "chat")
         )
@@ -149,14 +149,24 @@ async def stream_rag_response(
             # Handle context (sources) - send once at beginning
             if "context" in chunk and not sources_sent:
                 sources = []
-                for doc in chunk["context"]:
+                # Add document numbers to the metadata for citation purposes
+                for idx, doc in enumerate(chunk["context"], start=1):
+                    # Store original content before modification
+                    original_content = doc.page_content
+
+                    # Prepend document number to page_content for the model to see
+                    doc.page_content = f"[Document {idx}]\n{doc.page_content}"
+                    doc.metadata["doc_num"] = idx
+
+                    # Send original content (without prefix) to frontend for matching
                     sources.append({
-                        "content": doc.page_content[:300],  # Preview
+                        "content": original_content[:300],  # Preview of original content
                         "metadata": {
                             "source": doc.metadata.get("source", "Unknown"),
                             "page": doc.metadata.get("page"),
                             "file_hash": doc.metadata.get("file_hash"),
                             "title": doc.metadata.get("title"),
+                            "doc_num": idx,
                         },
                     })
 

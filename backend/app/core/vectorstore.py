@@ -14,7 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from sqlmodel import select
 
 from app.config import get_settings
-from app.db.session import get_session
+from app.db.session import AsyncSessionLocal
 from app.db.models import AppSettings
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ async def get_embeddings_model() -> OpenAIEmbeddings:
     Get OpenAI embeddings model from database settings.
     Falls back to default if not found.
     """
-    async with get_session() as session:
+    async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(AppSettings).where(AppSettings.key == "embeddings")
         )
@@ -84,7 +84,7 @@ async def get_retriever(
 
     # Get default settings from database if not provided
     if k is None or fetch_k is None or search_type is None:
-        async with get_session() as session:
+        async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(AppSettings).where(AppSettings.key == "vectorstore")
             )
@@ -102,8 +102,11 @@ async def get_retriever(
 
     search_kwargs = {
         "k": k,
-        "fetch_k": fetch_k,
     }
+
+    # fetch_k is only used for MMR search
+    if search_type == "mmr":
+        search_kwargs["fetch_k"] = fetch_k
 
     if document_filter:
         search_kwargs["filter"] = document_filter
@@ -137,6 +140,10 @@ async def get_all_embeddings_grouped() -> List[Dict[str, Any]]:
     """
     results = await get_all_embeddings()
     grouped_data = {}
+
+    # Handle empty results
+    if not results.get("ids"):
+        return []
 
     for id_, metadata, content in zip(
         results["ids"],
@@ -259,8 +266,15 @@ async def count_total_embeddings() -> int:
     Returns:
         Total embedding count
     """
-    results = await get_all_embeddings()
-    return len(results["ids"])
+    try:
+        results = await get_all_embeddings()
+        ids = results.get("ids")
+        if ids is None:
+            return 0
+        return len(ids)
+    except Exception as e:
+        logger.warning(f"Failed to count embeddings: {e}")
+        return 0
 
 
 async def count_total_documents() -> int:

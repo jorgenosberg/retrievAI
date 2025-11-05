@@ -30,8 +30,8 @@ async def register(
     """
     # Check if email is authorized
     statement = select(AuthorizedEmail).where(AuthorizedEmail.email == user_data.email)
-    result = await session.exec(statement)
-    authorized = result.first()
+    result = await session.execute(statement)
+    authorized = result.scalar_one_or_none()
 
     if not authorized:
         raise HTTPException(
@@ -41,8 +41,8 @@ async def register(
 
     # Check if user already exists
     statement = select(User).where(User.email == user_data.email)
-    result = await session.exec(statement)
-    existing_user = result.first()
+    result = await session.execute(statement)
+    existing_user = result.scalar_one_or_none()
 
     if existing_user:
         raise HTTPException(
@@ -75,8 +75,8 @@ async def login(
     """
     # Find user
     statement = select(User).where(User.email == login_data.email)
-    result = await session.exec(statement)
-    user = result.first()
+    result = await session.execute(statement)
+    user = result.scalar_one_or_none()
 
     if not user or not verify_password(login_data.password, user.hashed_password):
         raise HTTPException(

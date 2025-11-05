@@ -29,7 +29,7 @@ from langchain_community.document_loaders import (
 from sqlmodel import select
 
 from app.config import get_settings
-from app.db.session import get_session
+from app.db.session import AsyncSessionLocal
 from app.db.models import Document as DBDocument, DocumentStatus, AppSettings
 from app.core.pdf_loaders import PyMuPDF4LLMLoader
 from app.core.vectorstore import add_documents
@@ -121,7 +121,7 @@ async def get_chunk_settings() -> Dict[str, Any]:
     Returns:
         Dictionary with chunk_size, chunk_overlap, batch_size, rate_limit
     """
-    async with get_session() as session:
+    async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(AppSettings).where(AppSettings.key == "embeddings")
         )
@@ -276,7 +276,7 @@ async def process_single_document(
                 await asyncio.sleep(delay)
 
         # Update document in database
-        async with get_session() as session:
+        async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(DBDocument).where(DBDocument.id == document_id)
             )
@@ -302,7 +302,7 @@ async def process_single_document(
         logger.error(f"Error processing document {document_id}: {e}")
 
         # Update document status to FAILED
-        async with get_session() as session:
+        async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(DBDocument).where(DBDocument.id == document_id)
             )

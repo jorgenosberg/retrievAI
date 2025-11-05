@@ -54,8 +54,8 @@ async def chat(
     if request.conversation_id:
         # Fetch existing conversation
         statement = select(Conversation).where(Conversation.id == request.conversation_id)
-        result = await session.exec(statement)
-        conversation = result.first()
+        result = await session.execute(statement)
+        conversation = result.scalar_one_or_none()
 
         if not conversation:
             raise HTTPException(
@@ -198,8 +198,8 @@ async def list_conversations(
         .limit(page_size)
     )
 
-    result = await session.exec(query)
-    conversations = result.all()
+    result = await session.execute(query)
+    conversations = result.scalars().all()
 
     return conversations
 
@@ -219,8 +219,8 @@ async def get_conversation(
     """
     # Fetch conversation
     statement = select(Conversation).where(Conversation.id == conversation_id)
-    result = await session.exec(statement)
-    conversation = result.first()
+    result = await session.execute(statement)
+    conversation = result.scalar_one_or_none()
 
     if not conversation:
         raise HTTPException(
@@ -241,8 +241,8 @@ async def get_conversation(
         .where(Message.conversation_id == conversation_id)
         .order_by(col(Message.created_at).asc())
     )
-    messages_result = await session.exec(messages_query)
-    messages = messages_result.all()
+    messages_result = await session.execute(messages_query)
+    messages = messages_result.scalars().all()
 
     return {
         "conversation": ConversationRead.model_validate(conversation),
@@ -263,8 +263,8 @@ async def delete_conversation(
     """
     # Fetch conversation
     statement = select(Conversation).where(Conversation.id == conversation_id)
-    result = await session.exec(statement)
-    conversation = result.first()
+    result = await session.execute(statement)
+    conversation = result.scalar_one_or_none()
 
     if not conversation:
         raise HTTPException(
@@ -301,8 +301,8 @@ async def update_conversation_title(
     """
     # Fetch conversation
     statement = select(Conversation).where(Conversation.id == conversation_id)
-    result = await session.exec(statement)
-    conversation = result.first()
+    result = await session.execute(statement)
+    conversation = result.scalar_one_or_none()
 
     if not conversation:
         raise HTTPException(

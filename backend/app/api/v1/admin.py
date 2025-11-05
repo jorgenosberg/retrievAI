@@ -79,8 +79,8 @@ async def list_users(
     offset = (page - 1) * page_size
     query = query.offset(offset).limit(page_size)
 
-    result = await session.exec(query)
-    users = result.all()
+    result = await session.execute(query)
+    users = result.scalars().all()
 
     return users
 
@@ -98,8 +98,8 @@ async def create_user(
     """
     # Check if user already exists
     statement = select(User).where(User.email == user_data.email)
-    result = await session.exec(statement)
-    existing_user = result.first()
+    result = await session.execute(statement)
+    existing_user = result.scalar_one_or_none()
 
     if existing_user:
         raise HTTPException(
@@ -137,8 +137,8 @@ async def update_user(
     """
     # Get user
     statement = select(User).where(User.id == user_id)
-    result = await session.exec(statement)
-    user = result.first()
+    result = await session.execute(statement)
+    user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(
@@ -156,10 +156,10 @@ async def update_user(
     # Update fields
     if user_update.email is not None:
         # Check if new email already exists
-        email_check = await session.exec(
+        email_check = await session.execute(
             select(User).where(User.email == user_update.email, User.id != user_id)
         )
-        if email_check.first():
+        if email_check.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already in use",
@@ -193,8 +193,8 @@ async def delete_user(
     """
     # Get user
     statement = select(User).where(User.id == user_id)
-    result = await session.exec(statement)
-    user = result.first()
+    result = await session.execute(statement)
+    user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(
@@ -210,10 +210,10 @@ async def delete_user(
         )
 
     # Count user's data
-    doc_count = await session.exec(
+    doc_count = await session.execute(
         select(func.count()).select_from(Document).where(Document.uploaded_by == user_id)
     )
-    conv_count = await session.exec(
+    conv_count = await session.execute(
         select(func.count()).select_from(Conversation).where(Conversation.user_id == user_id)
     )
 
@@ -224,8 +224,8 @@ async def delete_user(
     return {
         "message": f"User {user.email} deleted successfully",
         "user_id": user_id,
-        "documents_deleted": doc_count.one(),
-        "conversations_deleted": conv_count.one(),
+        "documents_deleted": doc_count.scalar_one(),
+        "conversations_deleted": conv_count.scalar_one(),
     }
 
 
@@ -238,8 +238,8 @@ async def list_authorized_emails(
     """
     List all authorized emails (admin only).
     """
-    result = await session.exec(select(AuthorizedEmail))
-    emails = result.all()
+    result = await session.execute(select(AuthorizedEmail))
+    emails = result.scalars().all()
     return emails
 
 
@@ -256,8 +256,8 @@ async def add_authorized_email(
     """
     # Check if already exists
     statement = select(AuthorizedEmail).where(AuthorizedEmail.email == email_data.email)
-    result = await session.exec(statement)
-    existing = result.first()
+    result = await session.execute(statement)
+    existing = result.scalar_one_or_none()
 
     if existing:
         raise HTTPException(
@@ -288,8 +288,8 @@ async def remove_authorized_email(
     Remove an email from the authorized list (admin only).
     """
     statement = select(AuthorizedEmail).where(AuthorizedEmail.id == email_id)
-    result = await session.exec(statement)
-    authorized_email = result.first()
+    result = await session.execute(statement)
+    authorized_email = result.scalar_one_or_none()
 
     if not authorized_email:
         raise HTTPException(
@@ -324,55 +324,55 @@ async def get_system_stats(
         - vectorstore: ChromaDB statistics
     """
     # User stats
-    total_users = await session.exec(select(func.count()).select_from(User))
-    admin_users = await session.exec(
+    total_users = await session.execute(select(func.count()).select_from(User))
+    admin_users = await session.execute(
         select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
     )
-    active_users = await session.exec(
+    active_users = await session.execute(
         select(func.count()).select_from(User).where(User.is_active == True)
     )
 
     # Document stats
-    total_documents = await session.exec(select(func.count()).select_from(Document))
-    total_chunks = await session.exec(select(func.sum(Document.chunk_count)).select_from(Document))
-    total_storage = await session.exec(select(func.sum(Document.file_size)).select_from(Document))
+    total_documents = await session.execute(select(func.count()).select_from(Document))
+    total_chunks = await session.execute(select(func.sum(Document.chunk_count)).select_from(Document))
+    total_storage = await session.execute(select(func.sum(Document.file_size)).select_from(Document))
 
     # Document counts by status
     from app.db.models import DocumentStatus
     doc_by_status = {}
     for doc_status in DocumentStatus:
-        count = await session.exec(
+        count = await session.execute(
             select(func.count()).select_from(Document).where(Document.status == doc_status)
         )
-        doc_by_status[doc_status.value] = count.one()
+        doc_by_status[doc_status.value] = count.scalar_one()
 
     # Conversation stats
-    total_conversations = await session.exec(select(func.count()).select_from(Conversation))
-    total_messages = await session.exec(select(func.count()).select_from(Message))
+    total_conversations = await session.execute(select(func.count()).select_from(Conversation))
+    total_messages = await session.execute(select(func.count()).select_from(Message))
 
     # ChromaDB stats
     chroma_stats = await get_collection_stats()
 
     return SystemStats(
         users={
-            "total": total_users.one(),
-            "admins": admin_users.one(),
-            "regular": total_users.one() - admin_users.one(),
-            "active": active_users.one(),
-            "inactive": total_users.one() - active_users.one(),
+            "total": total_users.scalar_one(),
+            "admins": admin_users.scalar_one(),
+            "regular": total_users.scalar_one() - admin_users.scalar_one(),
+            "active": active_users.scalar_one(),
+            "inactive": total_users.scalar_one() - active_users.scalar_one(),
         },
         documents={
-            "total": total_documents.one(),
+            "total": total_documents.scalar_one(),
             "by_status": doc_by_status,
-            "total_chunks": total_chunks.one() or 0,
+            "total_chunks": total_chunks.scalar_one() or 0,
         },
         conversations={
-            "total": total_conversations.one(),
-            "total_messages": total_messages.one(),
+            "total": total_conversations.scalar_one(),
+            "total_messages": total_messages.scalar_one(),
         },
         storage={
-            "total_bytes": total_storage.one() or 0,
-            "total_mb": round((total_storage.one() or 0) / 1024 / 1024, 2),
+            "total_bytes": total_storage.scalar_one() or 0,
+            "total_mb": round((total_storage.scalar_one() or 0) / 1024 / 1024, 2),
         },
         vectorstore=chroma_stats,
     )

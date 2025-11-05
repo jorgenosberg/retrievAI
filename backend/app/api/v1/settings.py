@@ -56,8 +56,8 @@ async def get_or_create_setting(
 ) -> AppSettings:
     """Get setting from database or create with default value."""
     statement = select(AppSettings).where(AppSettings.key == key)
-    result = await session.exec(statement)
-    setting = result.first()
+    result = await session.execute(statement)
+    setting = result.scalar_one_or_none()
 
     if not setting:
         setting = AppSettings(key=key, value=default_value)
@@ -212,8 +212,8 @@ async def reset_settings(
         ("vectorstore", DEFAULT_VECTORSTORE),
     ]:
         statement = select(AppSettings).where(AppSettings.key == key)
-        result = await session.exec(statement)
-        setting = result.first()
+        result = await session.execute(statement)
+        setting = result.scalar_one_or_none()
 
         if setting:
             setting.value = default_value

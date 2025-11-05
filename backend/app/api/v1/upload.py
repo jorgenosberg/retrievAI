@@ -61,8 +61,8 @@ async def upload_file(
     # Check for duplicate
     from sqlmodel import select
     statement = select(Document).where(Document.file_hash == file_hash)
-    result = await session.exec(statement)
-    existing_doc = result.first()
+    result = await session.execute(statement)
+    existing_doc = result.scalar_one_or_none()
 
     if existing_doc:
         raise HTTPException(
@@ -129,8 +129,8 @@ async def get_upload_status(
     # Get document from database
     from sqlmodel import select
     statement = select(Document).where(Document.file_hash == file_hash)
-    result = await session.exec(statement)
-    document = result.first()
+    result = await session.execute(statement)
+    document = result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(

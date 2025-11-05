@@ -62,8 +62,8 @@ async def get_current_user(
 
     # Fetch user from database
     statement = select(User).where(User.id == user_id)
-    result = await session.exec(statement)
-    user = result.first()
+    result = await session.execute(statement)
+    user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(

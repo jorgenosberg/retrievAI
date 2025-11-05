@@ -5,11 +5,19 @@ In the future, these will be stored in the database via AppSettings model
 to allow admin customization.
 """
 
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
 
 # Default RAG prompt template
 DEFAULT_PROMPT_TEMPLATE = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+
+When referencing information from the context, cite the source using inline citations in the format [1], [2], [3], etc. Each source document in the context is numbered. Use these numbers to indicate where information comes from.
+
+For example:
+- "According to the documentation [1], the API uses REST endpoints."
+- "The system supports multiple file formats [2][3]."
+
+Always cite your sources when making specific claims or references.
 
 <context>
 {context}
@@ -23,8 +31,8 @@ CHAT_PROMPT = PromptTemplate(
 )
 
 DOCUMENT_PROMPT = PromptTemplate(
-    template="{page_content}\nSource:{file_path}, page {page}",
-    input_variables=["page_content", "file_path", "page"]
+    template="[Document {page}]: {page_content}",
+    input_variables=["page_content", "page"]
 )
 
 

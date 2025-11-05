@@ -1,5 +1,6 @@
 """Security utilities - JWT, password hashing, etc."""
 
+import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -10,18 +11,37 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing with bcrypt backend explicitly set
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__default_rounds=12,
+)
+
+
+def _prepare_password(password: str) -> str:
+    """
+    Prepare password for bcrypt hashing.
+    Bcrypt has a 72-byte limit. For longer passwords, we pre-hash with SHA-256.
+    This is a secure approach recommended by OWASP.
+    """
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        # Pre-hash with SHA-256 for passwords > 72 bytes
+        return hashlib.sha256(password_bytes).hexdigest()
+    return password
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    prepared_password = _prepare_password(plain_password)
+    return pwd_context.verify(prepared_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
     """Hash a password."""
-    return pwd_context.hash(password)
+    prepared_password = _prepare_password(password)
+    return pwd_context.hash(prepared_password)
 
 
 def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None) -> str:

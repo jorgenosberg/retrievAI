@@ -55,8 +55,8 @@ async def list_documents(
     query = query.offset(offset).limit(page_size)
 
     # Execute
-    result = await session.exec(query)
-    documents = result.all()
+    result = await session.execute(query)
+    documents = result.scalars().all()
 
     return documents
 
@@ -89,22 +89,22 @@ async def get_document_stats(
         count_query = select(func.count()).select_from(Document).where(Document.status == doc_status)
         if current_user.role != UserRole.ADMIN:
             count_query = count_query.where(Document.uploaded_by == current_user.id)
-        result = await session.exec(count_query)
-        status_counts[doc_status.value] = result.one()
+        result = await session.execute(count_query)
+        status_counts[doc_status.value] = result.scalar_one()
 
     # Total documents
     total_query = select(func.count()).select_from(Document)
     if current_user.role != UserRole.ADMIN:
         total_query = total_query.where(Document.uploaded_by == current_user.id)
-    result = await session.exec(total_query)
-    total_docs = result.one()
+    result = await session.execute(total_query)
+    total_docs = result.scalar_one()
 
     # Total storage used
     storage_query = select(func.sum(Document.file_size)).select_from(Document)
     if current_user.role != UserRole.ADMIN:
         storage_query = storage_query.where(Document.uploaded_by == current_user.id)
-    result = await session.exec(storage_query)
-    total_storage = result.one() or 0
+    result = await session.execute(storage_query)
+    total_storage = result.scalar_one() or 0
 
     # Total chunks (from vectorstore - only admin can see global count)
     if current_user.role == UserRole.ADMIN:
@@ -114,8 +114,8 @@ async def get_document_stats(
         chunk_query = select(func.sum(Document.chunk_count)).select_from(Document).where(
             Document.uploaded_by == current_user.id
         )
-        result = await session.exec(chunk_query)
-        total_chunks = result.one() or 0
+        result = await session.execute(chunk_query)
+        total_chunks = result.scalar_one() or 0
 
     return {
         "total_documents": total_docs,
@@ -138,8 +138,8 @@ async def get_document(
     Returns document with all metadata including error messages if failed.
     """
     statement = select(Document).where(Document.id == document_id)
-    result = await session.exec(statement)
-    document = result.first()
+    result = await session.execute(statement)
+    document = result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(
@@ -177,8 +177,8 @@ async def delete_document(
     """
     # Get document
     statement = select(Document).where(Document.id == document_id)
-    result = await session.exec(statement)
-    document = result.first()
+    result = await session.execute(statement)
+    document = result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(
@@ -242,8 +242,8 @@ async def semantic_search(
     if current_user.role != UserRole.ADMIN:
         # Get user's document file hashes
         statement = select(Document.file_hash).where(Document.uploaded_by == current_user.id)
-        result = await session.exec(statement)
-        user_file_hashes = result.all()
+        result = await session.execute(statement)
+        user_file_hashes = result.scalars().all()
 
         if not user_file_hashes:
             return []  # User has no documents

@@ -16,7 +16,6 @@ async def process_document_upload(
     ctx: Dict[str, Any],
     file_path: str,
     file_hash: str,
-    filename: str,
     document_id: int,
 ) -> Dict[str, Any]:
     """
@@ -28,64 +27,39 @@ async def process_document_upload(
         ctx: ARQ context (contains redis connection, etc.)
         file_path: Path to uploaded file
         file_hash: MD5 hash of file
-        filename: Original filename
         document_id: Database document ID
 
     Returns:
         Dict with processing results
     """
     from app.core.ingestion import process_single_document
-    from app.db.session import AsyncSessionLocal
-    from app.db.models import Document, DocumentStatus
-    from sqlmodel import select
+
+    # Progress callback that updates Redis
+    async def progress_callback(progress: int, message: str):
+        await ctx["redis"].set(f"task:upload:{file_hash}:progress", str(progress))
+        await ctx["redis"].set(f"task:upload:{file_hash}:message", message)
 
     try:
         # Update task status
         await ctx["redis"].set(f"task:upload:{file_hash}:status", "running")
         await ctx["redis"].set(f"task:upload:{file_hash}:progress", "0")
 
-        # Process document (load, chunk, embed)
+        # Process document (load, chunk, embed) - this handles DB updates internally
         result = await process_single_document(
+            document_id=document_id,
             file_path=Path(file_path),
             file_hash=file_hash,
-            filename=filename,
-            progress_callback=lambda p: ctx["redis"].set(
-                f"task:upload:{file_hash}:progress", str(int(p * 100))
-            ),
+            progress_callback=progress_callback,
         )
-
-        # Update database
-        async with AsyncSessionLocal() as session:
-            statement = select(Document).where(Document.id == document_id)
-            doc = (await session.exec(statement)).first()
-            if doc:
-                doc.status = DocumentStatus.COMPLETED
-                doc.chunk_count = result["chunk_count"]
-                session.add(doc)
-                await session.commit()
 
         # Update task status
         await ctx["redis"].set(f"task:upload:{file_hash}:status", "completed")
         await ctx["redis"].set(f"task:upload:{file_hash}:progress", "100")
 
-        return {
-            "success": True,
-            "chunk_count": result["chunk_count"],
-            "file_hash": file_hash,
-        }
+        return result
 
     except Exception as e:
-        # Update database with error
-        async with AsyncSessionLocal() as session:
-            statement = select(Document).where(Document.id == document_id)
-            doc = (await session.exec(statement)).first()
-            if doc:
-                doc.status = DocumentStatus.FAILED
-                doc.error_message = str(e)
-                session.add(doc)
-                await session.commit()
-
-        # Update task status
+        # Update task status (DB is updated inside process_single_document)
         await ctx["redis"].set(f"task:upload:{file_hash}:status", "failed")
         await ctx["redis"].set(f"task:upload:{file_hash}:error", str(e))
 

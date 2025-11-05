@@ -167,3 +167,19 @@ documents/*
 
 .DS_Store
 /.idea
+
+# General AI instruction files
+CLAUDE.md
+CLAUDE.txt
+GPT.md
+GPT.txt
+AGENT.md
+AGENT.txt
+PROMPT.md
+PROMPT.txt
+SYSTEM_PROMPT.md
+SYSTEM_PROMPT.txt
+MODEL_PROMPT.md
+MODEL_PROMPT.txt
+.cursor/
+.cursor/**

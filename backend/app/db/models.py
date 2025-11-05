@@ -1,7 +1,7 @@
 """SQLModel database models with async support."""
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID, uuid4
 from enum import Enum
 
@@ -102,7 +102,7 @@ class DocumentBase(SQLModel):
     chunk_count: int = Field(default=0)
     status: DocumentStatus = Field(default=DocumentStatus.PROCESSING)
     error_message: Optional[str] = Field(default=None, sa_column=Column(Text))
-    metadata: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    doc_metadata: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
 class Document(DocumentBase, TimestampModel, table=True):
@@ -158,7 +158,7 @@ class MessageBase(SQLModel):
     """Shared Message properties."""
     role: str = Field(max_length=50)  # "user" or "assistant"
     content: str = Field(sa_column=Column(Text))
-    sources: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    sources: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
 class Message(MessageBase, TimestampModel, table=True):
@@ -186,7 +186,7 @@ class AppSettings(TimestampModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     key: str = Field(unique=True, index=True, max_length=255)
-    value: dict = Field(sa_column=Column(JSON))
+    value: Dict[str, Any] = Field(sa_column=Column(JSON))
     updated_by: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
@@ -210,6 +210,6 @@ class BackgroundTask(TimestampModel, table=True):
     task_type: str = Field(max_length=100)
     status: TaskStatus = Field(default=TaskStatus.PENDING)
     progress: int = Field(default=0)
-    result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    result: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     error_message: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")

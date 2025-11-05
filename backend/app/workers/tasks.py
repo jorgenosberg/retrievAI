@@ -125,9 +125,6 @@ class WorkerSettings:
     # Cron jobs (optional)
     cron_jobs = [
         # Clean temp files daily at 3 AM
-        {
-            "function": cleanup_temp_files,
-            "hour": 3,
-            "minute": 0,
-        }
+        # Commented out for now - enable in production if needed
+        # CronJob(cleanup_temp_files, hour=3, minute=0),
     ]

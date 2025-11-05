@@ -17,10 +17,9 @@ WORKDIR /app
 
 # Copy dependency files
 COPY pyproject.toml ./
-COPY README.md* ./ 2>/dev/null || :
 
-# Install dependencies using UV
-RUN uv pip install --system --no-cache -r pyproject.toml
+# Install dependencies using UV sync
+RUN uv sync --no-dev
 
 # Copy application code
 COPY app/ ./app/
@@ -31,5 +30,5 @@ RUN mkdir -p /app/data/uploads /app/data/tmp
 # Expose port
 EXPOSE 8000
 
-# Run with uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run with uvicorn via uv
+CMD ["uv", "run", "--no-dev", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -11,17 +11,21 @@ from app.config import get_settings
 settings = get_settings()
 
 # Create async engine
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    future=True,
-    pool_pre_ping=True,
-    # Use NullPool in development to avoid connection issues
+engine_kwargs = {
+    "echo": settings.DEBUG,
+    "future": True,
+    "pool_pre_ping": True,
+}
+
+# Use NullPool in development to avoid connection issues
+if settings.DEBUG:
+    engine_kwargs["poolclass"] = NullPool
+else:
     # In production, use default pool with sensible limits for VM
-    poolclass=NullPool if settings.DEBUG else None,
-    pool_size=5 if not settings.DEBUG else None,
-    max_overflow=10 if not settings.DEBUG else None,
-)
+    engine_kwargs["pool_size"] = 5
+    engine_kwargs["max_overflow"] = 10
+
+engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
 
 # Async session factory
 AsyncSessionLocal = async_sessionmaker(

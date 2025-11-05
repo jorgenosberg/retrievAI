@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     def parse_cors_origins(cls, v):
         """Parse comma-separated CORS origins."""
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
     # File Upload

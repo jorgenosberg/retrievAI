@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { apiClient } from '@/lib/api'
 import { useChat } from '@/hooks/useChat'
 import { MessageContent } from '@/components/MessageContent'
 import { SourceContextModal } from '@/components/SourceContextModal'
@@ -161,70 +160,69 @@ function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <div className="w-64 bg-white border-r border-gray-200 p-4 flex flex-col">
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900">RetrievAI</h1>
+    <div className="flex min-h-full flex-col bg-gray-100">
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Chat</h1>
+            <p className="text-sm text-gray-500">Ask grounded questions about your uploaded corpus.</p>
+          </div>
+          <button
+            onClick={handleNewChat}
+            className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+          >
+            New Chat
+          </button>
         </div>
 
-        <button
-          onClick={handleNewChat}
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 mb-4"
-        >
-          New Chat
-        </button>
-
-        <nav className="space-y-1 flex-1">
-          <a href="/chat" className="block px-3 py-2 text-gray-700 bg-gray-100 rounded-md">Chat</a>
-          <a href="/documents" className="block px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md">Documents</a>
-          <a href="/settings" className="block px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md">Settings</a>
-        </nav>
-
-        <button onClick={() => { apiClient.logout(); window.location.href = '/login' }} className="w-full text-red-600 hover:bg-red-50 py-2 px-4 rounded-md mt-4">
-          Logout
-        </button>
-      </div>
-
-      <div className="flex-1 flex flex-col">
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="space-y-4">
           {messages.length === 0 && !streamingMessage ? (
-            <div className="h-full flex items-center justify-center text-gray-500">
-              <div className="text-center">
-                <h2 className="text-2xl font-semibold mb-2">Welcome to RetrievAI</h2>
-                <p>Ask me anything about your documents!</p>
-              </div>
+            <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-600">
+              <h2 className="text-xl font-semibold text-gray-900">Welcome to RetrievAI</h2>
+              <p className="mt-2 text-sm">
+                Your assistant is ready. Start the conversation by asking anything about your documents.
+              </p>
             </div>
           ) : (
             <>
               {messages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-3xl ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-900 border border-gray-200'} rounded-lg px-4 py-3`}>
+                  <div
+                    className={`max-w-3xl rounded-lg px-4 py-3 shadow-sm ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'border border-gray-200 bg-white text-gray-900'
+                    }`}
+                  >
                     {msg.role === 'user' ? (
                       <div className="whitespace-pre-wrap">{msg.content}</div>
                     ) : (
-                      <MessageContent content={msg.content} sources={msg.sources} />
-                    )}
-                    {msg.role === 'assistant' && (
-                      <MessageUtilities
-                        content={msg.content}
-                        sources={msg.sources}
-                        onCopy={() => console.log('Copied message')}
-                        onExpandSource={(source) => setExpandedSource(source)}
-                      />
+                      <>
+                        <MessageContent content={msg.content} sources={msg.sources} />
+                        <MessageUtilities
+                          content={msg.content}
+                          sources={msg.sources}
+                          onCopy={() => {}}
+                          onExpandSource={(source) => setExpandedSource(source)}
+                        />
+                      </>
                     )}
                   </div>
                 </div>
               ))}
 
-              {/* Streaming message */}
               {(streamingMessage || statusMessage) && (
                 <div className="flex justify-start">
-                  <div className="max-w-3xl bg-white text-gray-900 border border-gray-200 rounded-lg px-4 py-3">
+                  <div className="max-w-3xl rounded-lg border border-gray-200 bg-white px-4 py-3 text-gray-900 shadow-sm">
                     {statusMessage && !streamingMessage && (
-                      <div className="text-sm text-gray-500 italic flex items-center gap-2">
-                        <svg className="animate-spin h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <svg className="h-4 w-4 animate-spin text-blue-600" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
                         </svg>
                         {statusMessage}
                       </div>
@@ -232,7 +230,7 @@ function ChatPage() {
                     {streamingMessage && (
                       <div className="flex items-start">
                         <MessageContent content={streamingMessage} sources={streamingSources} />
-                        <span className="inline-block w-1 h-4 bg-blue-600 animate-pulse ml-1 mt-1"></span>
+                        <span className="ml-1 mt-1 inline-block h-4 w-1 animate-pulse rounded-full bg-blue-600" />
                       </div>
                     )}
                   </div>
@@ -240,44 +238,42 @@ function ChatPage() {
               )}
             </>
           )}
-          <div ref={messagesEndRef} />
         </div>
 
-        {error && (
-          <div className="bg-red-50 border-t border-red-200 px-4 py-2 text-sm text-red-700">
-            Error: {error}
-          </div>
-        )}
-
-        <div className="border-t border-gray-200 bg-white p-4">
-          <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask a question..."
-                disabled={isStreaming}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-              />
-              <button
-                type="submit"
-                disabled={isStreaming || !input.trim()}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {isStreaming ? 'Streaming...' : 'Send'}
-              </button>
-            </div>
-          </form>
-        </div>
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Source Context Modal */}
+      {error && (
+        <div className="border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          Error: {error}
+        </div>
+      )}
+
+      <div className="border-t border-gray-200 bg-white p-4">
+        <form onSubmit={handleSubmit} className="mx-auto flex max-w-4xl flex-col gap-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask a question..."
+              disabled={isStreaming}
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+            />
+            <button
+              type="submit"
+              disabled={isStreaming || !input.trim()}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+            >
+              {isStreaming ? 'Streaming...' : 'Send'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500">Press Enter to send. Use Shift + Enter for a new line.</p>
+        </form>
+      </div>
+
       {expandedSource && (
-        <SourceContextModal
-          source={expandedSource}
-          onClose={() => setExpandedSource(null)}
-        />
+        <SourceContextModal source={expandedSource} onClose={() => setExpandedSource(null)} />
       )}
     </div>
   )

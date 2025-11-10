@@ -23,6 +23,9 @@ RUN uv sync --no-dev
 
 # Copy application code
 COPY app/ ./app/
+COPY start.sh ./start.sh
+
+RUN chmod +x /app/start.sh
 
 # Create data directories
 RUN mkdir -p /app/data/uploads /app/data/tmp
@@ -30,5 +33,5 @@ RUN mkdir -p /app/data/uploads /app/data/tmp
 # Expose port
 EXPOSE 8000
 
-# Run with uvicorn via uv
-CMD ["uv", "run", "--no-dev", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run via helper script (auto-tunes uvicorn workers)
+CMD ["/app/start.sh"]

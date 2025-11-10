@@ -1,9 +1,9 @@
 """ARQ background tasks."""
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Dict, Any
-from uuid import UUID
 
 from arq import ArqRedis
 
@@ -117,10 +117,10 @@ class WorkerSettings:
     ]
 
     redis_settings = get_redis_settings()
-    queue_name = "arq:queue"
-    max_jobs = 2  # Limit for VM
-    job_timeout = 1800  # 30 min
-    keep_result = 3600  # 1 hour
+    queue_name = os.getenv("ARQ_QUEUE_NAME", "arq:queue")
+    max_jobs = int(os.getenv("WORKER_MAX_JOBS", "2"))
+    job_timeout = int(os.getenv("WORKER_JOB_TIMEOUT", "1800"))
+    keep_result = int(os.getenv("WORKER_KEEP_RESULT_SECONDS", "3600"))
 
     # Cron jobs (optional)
     cron_jobs = [

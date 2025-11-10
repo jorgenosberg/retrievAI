@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
 import { apiClient } from '@/lib/api'
+import { AuthenticatedLayout } from '@/components/AuthenticatedLayout'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async () => {
@@ -14,5 +15,9 @@ export const Route = createFileRoute('/_authenticated')({
       throw redirect({ to: '/login' })
     }
   },
-  component: () => <Outlet />,
+  component: () => (
+    <AuthenticatedLayout>
+      <Outlet />
+    </AuthenticatedLayout>
+  ),
 })

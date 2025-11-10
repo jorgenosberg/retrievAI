@@ -33,6 +33,7 @@ from app.db.session import AsyncSessionLocal
 from app.db.models import Document as DBDocument, DocumentStatus, AppSettings
 from app.core.pdf_loaders import PyMuPDF4LLMLoader
 from app.core.vectorstore import add_documents
+from app.core.cache import invalidate_document_stats_cache
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -287,6 +288,7 @@ async def process_single_document(
                 db_document.chunk_count = len(chunks)
                 session.add(db_document)
                 await session.commit()
+                await invalidate_document_stats_cache(db_document.uploaded_by)
 
         if progress_callback:
             await progress_callback(100, "Completed!")
@@ -313,6 +315,7 @@ async def process_single_document(
                 db_document.error_message = str(e)
                 session.add(db_document)
                 await session.commit()
+                await invalidate_document_stats_cache(db_document.uploaded_by)
 
         if progress_callback:
             await progress_callback(0, f"Failed: {str(e)}")

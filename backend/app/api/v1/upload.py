@@ -14,6 +14,7 @@ from app.db.session import get_session
 from app.db.models import Document, DocumentStatus, User
 from app.dependencies import get_current_user, get_arq_pool
 from app.core.ingestion import is_supported_file_type, get_supported_extensions, compute_file_hash
+from app.core.cache import invalidate_document_stats_cache
 
 settings = get_settings()
 router = APIRouter()
@@ -92,6 +93,7 @@ async def upload_file(
     session.add(document)
     await session.commit()
     await session.refresh(document)
+    await invalidate_document_stats_cache(current_user.id)
 
     # Enqueue background task
     job = await arq_pool.enqueue_job(

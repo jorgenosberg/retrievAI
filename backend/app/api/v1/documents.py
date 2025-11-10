@@ -12,7 +12,12 @@ from app.config import get_settings
 from app.db.session import get_session
 from app.db.models import Document, DocumentStatus, DocumentRead, User, UserRole
 from app.dependencies import get_current_user
-from app.core.vectorstore import delete_by_file_hash, search_documents, count_total_embeddings, count_total_documents
+from app.core.vectorstore import delete_by_file_hash, search_documents, count_total_embeddings
+from app.core.cache import (
+    get_cached_document_stats,
+    set_cached_document_stats,
+    invalidate_document_stats_cache,
+)
 
 settings = get_settings()
 router = APIRouter()
@@ -75,55 +80,60 @@ async def get_document_stats(
         - by_status: Count by status
         - storage_used: Total storage in bytes
     """
-    # Build query based on user role
-    if current_user.role == UserRole.ADMIN:
-        # Admin sees all documents
-        base_query = select(Document)
-    else:
-        # User sees only their documents
-        base_query = select(Document).where(Document.uploaded_by == current_user.id)
+    is_admin = current_user.role == UserRole.ADMIN
+    cache_hit = await get_cached_document_stats(
+        None if is_admin else current_user.id,
+        is_admin=is_admin,
+    )
+    if cache_hit:
+        return cache_hit
 
-    # Count by status
-    status_counts = {}
-    for doc_status in DocumentStatus:
-        count_query = select(func.count()).select_from(Document).where(Document.status == doc_status)
-        if current_user.role != UserRole.ADMIN:
-            count_query = count_query.where(Document.uploaded_by == current_user.id)
-        result = await session.execute(count_query)
-        status_counts[doc_status.value] = result.scalar_one()
+    filters = []
+    if not is_admin:
+        filters.append(Document.uploaded_by == current_user.id)
 
-    # Total documents
+    status_counts = {status.value: 0 for status in DocumentStatus}
+    status_query = select(Document.status, func.count()).group_by(Document.status)
+    if filters:
+        status_query = status_query.where(*filters)
+
+    result = await session.execute(status_query)
+    for status, count in result.all():
+        key = status.value if isinstance(status, DocumentStatus) else str(status)
+        status_counts[key] = count
+
     total_query = select(func.count()).select_from(Document)
-    if current_user.role != UserRole.ADMIN:
-        total_query = total_query.where(Document.uploaded_by == current_user.id)
-    result = await session.execute(total_query)
-    total_docs = result.scalar_one()
+    if filters:
+        total_query = total_query.where(*filters)
+    total_docs = (await session.execute(total_query)).scalar_one() or 0
 
-    # Total storage used
-    storage_query = select(func.sum(Document.file_size)).select_from(Document)
-    if current_user.role != UserRole.ADMIN:
-        storage_query = storage_query.where(Document.uploaded_by == current_user.id)
-    result = await session.execute(storage_query)
-    total_storage = result.scalar_one() or 0
+    storage_query = select(func.coalesce(func.sum(Document.file_size), 0)).select_from(Document)
+    if filters:
+        storage_query = storage_query.where(*filters)
+    total_storage = (await session.execute(storage_query)).scalar_one() or 0
 
-    # Total chunks (from vectorstore - only admin can see global count)
-    if current_user.role == UserRole.ADMIN:
+    if is_admin:
         total_chunks = await count_total_embeddings()
     else:
-        # For regular users, sum their document chunk counts
-        chunk_query = select(func.sum(Document.chunk_count)).select_from(Document).where(
-            Document.uploaded_by == current_user.id
-        )
-        result = await session.execute(chunk_query)
-        total_chunks = result.scalar_one() or 0
+        chunk_query = select(func.coalesce(func.sum(Document.chunk_count), 0)).select_from(Document)
+        chunk_query = chunk_query.where(Document.uploaded_by == current_user.id)
+        total_chunks = (await session.execute(chunk_query)).scalar_one() or 0
 
-    return {
+    payload = {
         "total_documents": total_docs,
         "total_chunks": total_chunks,
         "by_status": status_counts,
         "storage_used_bytes": total_storage,
         "storage_used_mb": round(total_storage / 1024 / 1024, 2) if total_storage else 0,
     }
+
+    await set_cached_document_stats(
+        None if is_admin else current_user.id,
+        is_admin=is_admin,
+        data=payload,
+    )
+
+    return payload
 
 
 @router.get("/{document_id}", response_model=DocumentRead)
@@ -209,6 +219,7 @@ async def delete_document(
     # Delete from database
     await session.delete(document)
     await session.commit()
+    await invalidate_document_stats_cache(document.uploaded_by)
 
     return {
         "message": f"Document '{document.filename}' deleted successfully",

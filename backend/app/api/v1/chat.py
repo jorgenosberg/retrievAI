@@ -94,7 +94,10 @@ async def chat(
             full_answer = ""
 
             try:
-                async for event in stream_rag_response(query=request.message):
+                async for event in stream_rag_response(
+                    query=request.message,
+                    user_id=current_user.id,
+                ):
                     # Collect answer tokens for saving to DB
                     if event["type"] == "token":
                         answer_tokens.append(event["content"])
@@ -151,7 +154,10 @@ async def chat(
     else:
         # Non-streaming response
         try:
-            result = await query_rag(query=request.message)
+            result = await query_rag(
+                query=request.message,
+                user_id=current_user.id,
+            )
 
             # Save assistant message
             assistant_message = Message(

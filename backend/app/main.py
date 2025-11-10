@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     print(f"Redis: {settings.REDIS_URL}")
 
     await init_db()
-    print("Database initialized")
+    print("Database connection verified (apply Alembic migrations separately)")
 
     await get_arq_pool()
     print("ARQ worker pool initialized")

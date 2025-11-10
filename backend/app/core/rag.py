@@ -19,12 +19,16 @@ from app.db.session import AsyncSessionLocal
 from app.db.models import AppSettings
 from app.core.prompts import CHAT_PROMPT, DOCUMENT_PROMPT
 from app.core.vectorstore import get_retriever
+from app.core.openai_keys import resolve_openai_api_key
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-async def get_chat_llm(streaming: bool = True) -> ChatOpenAI:
+async def get_chat_llm(
+    streaming: bool = True,
+    user_id: Optional[int] = None,
+) -> ChatOpenAI:
     """
     Get ChatOpenAI instance with settings from database.
 
@@ -48,14 +52,20 @@ async def get_chat_llm(streaming: bool = True) -> ChatOpenAI:
             model = "gpt-4o-mini"
             temperature = 0.7
 
+    api_key = await resolve_openai_api_key(user_id=user_id)
+
     return ChatOpenAI(
         model=model,
         temperature=temperature,
         streaming=streaming,
+        api_key=api_key,
     )
 
 
-async def get_combine_docs_chain(streaming: bool = True):
+async def get_combine_docs_chain(
+    streaming: bool = True,
+    user_id: Optional[int] = None,
+):
     """
     Create document combination chain.
 
@@ -65,7 +75,7 @@ async def get_combine_docs_chain(streaming: bool = True):
     Returns:
         Document combination chain
     """
-    llm = await get_chat_llm(streaming=streaming)
+    llm = await get_chat_llm(streaming=streaming, user_id=user_id)
 
     return create_stuff_documents_chain(
         llm=llm,
@@ -76,7 +86,8 @@ async def get_combine_docs_chain(streaming: bool = True):
 
 async def get_rag_chain(
     document_filter: Optional[Dict[str, Any]] = None,
-    streaming: bool = True
+    streaming: bool = True,
+    user_id: Optional[int] = None,
 ):
     """
     Create complete RAG chain with retriever and LLM.
@@ -88,7 +99,10 @@ async def get_rag_chain(
     Returns:
         Complete RAG chain
     """
-    combine_docs_chain = await get_combine_docs_chain(streaming=streaming)
+    combine_docs_chain = await get_combine_docs_chain(
+        streaming=streaming,
+        user_id=user_id,
+    )
     retriever = await get_retriever(document_filter=document_filter)
 
     return create_retrieval_chain(retriever, combine_docs_chain)
@@ -97,6 +111,7 @@ async def get_rag_chain(
 async def stream_rag_response(
     query: str,
     document_filter: Optional[Dict[str, Any]] = None,
+    user_id: Optional[int] = None,
 ) -> AsyncIterator[Dict[str, Any]]:
     """
     Stream RAG response as Server-Sent Events with enhanced UX.
@@ -135,7 +150,8 @@ async def stream_rag_response(
 
         rag_chain = await get_rag_chain(
             document_filter=document_filter,
-            streaming=True
+            streaming=True,
+            user_id=user_id,
         )
 
         # Track state
@@ -234,6 +250,7 @@ async def stream_rag_response(
 async def query_rag(
     query: str,
     document_filter: Optional[Dict[str, Any]] = None,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Query RAG chain without streaming (returns complete response).
@@ -248,7 +265,8 @@ async def query_rag(
     try:
         rag_chain = await get_rag_chain(
             document_filter=document_filter,
-            streaming=False
+            streaming=False,
+            user_id=user_id,
         )
 
         result = await rag_chain.ainvoke({"input": query})

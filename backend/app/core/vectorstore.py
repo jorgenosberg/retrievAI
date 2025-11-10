@@ -16,6 +16,7 @@ from sqlmodel import select
 from app.config import get_settings
 from app.db.session import AsyncSessionLocal
 from app.db.models import AppSettings
+from app.core.openai_keys import resolve_openai_api_key
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -38,7 +39,8 @@ async def get_embeddings_model() -> OpenAIEmbeddings:
             # Default model
             model = "text-embedding-3-small"
 
-        return OpenAIEmbeddings(model=model)
+        api_key = await resolve_openai_api_key()
+        return OpenAIEmbeddings(model=model, api_key=api_key)
 
 
 def get_chroma_client() -> chromadb.HttpClient:

@@ -190,6 +190,15 @@ class AppSettings(TimestampModel, table=True):
     updated_by: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
+class UserPreference(TimestampModel, table=True):
+    """Per-user settings and preferences."""
+    __tablename__ = "user_preferences"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", unique=True)
+    preferences: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+
+
 # API Key
 class APIKey(TimestampModel, table=True):
     """Encrypted API keys."""
@@ -199,6 +208,16 @@ class APIKey(TimestampModel, table=True):
     service: str = Field(max_length=100)
     encrypted_key: str = Field(sa_column=Column(Text))
     updated_by: Optional[int] = Field(default=None, foreign_key="users.id")
+
+
+class UserAPIKey(TimestampModel, table=True):
+    """Encrypted per-user API keys."""
+    __tablename__ = "user_api_keys"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", unique=True)
+    service: str = Field(default="openai", max_length=100)
+    encrypted_key: str = Field(sa_column=Column(Text))
 
 
 # Background Task

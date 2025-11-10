@@ -2,6 +2,7 @@
 
 from typing import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel
@@ -38,9 +39,14 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
+    """
+    Verify database connectivity.
+
+    Schema migrations are handled via Alembic; this function intentionally
+    avoids calling SQLModel.metadata.create_all().
+    """
     async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+        await conn.execute(text("SELECT 1"))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

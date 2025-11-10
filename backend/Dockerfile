@@ -24,6 +24,8 @@ RUN uv sync --no-dev
 # Copy application code
 COPY app/ ./app/
 COPY start.sh ./start.sh
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic/
 
 RUN chmod +x /app/start.sh
 

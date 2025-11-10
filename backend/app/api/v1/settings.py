@@ -5,11 +5,23 @@ from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.session import get_session
 from app.db.models import AppSettings, User
 from app.dependencies import get_current_admin_user, get_current_user
+from app.core.user_settings import (
+    get_or_create_user_preferences,
+    update_user_preferences,
+    user_has_personal_api_key,
+    set_personal_api_key,
+    delete_personal_api_key,
+)
+from app.core.openai_keys import (
+    get_global_openai_key_info,
+    set_global_openai_key,
+    clear_global_openai_key,
+)
 
 router = APIRouter()
 
@@ -25,6 +37,30 @@ class SettingsResponse(BaseModel):
     embeddings: Dict[str, Any]
     chat: Dict[str, Any]
     vectorstore: Dict[str, Any]
+
+
+class UserPreferencesPayload(BaseModel):
+    theme: str = Field(default="system")
+    auto_send: bool = Field(default=False)
+    show_sources: bool = Field(default=True)
+    default_chat_model: str = Field(default="gpt-4o-mini")
+    use_personal_api_key: bool = Field(default=False)
+
+
+class UserSettingsResponse(BaseModel):
+    preferences: Dict[str, Any]
+    personal_api_key_set: bool
+
+
+class PersonalAPIKeyRequest(BaseModel):
+    api_key: str
+
+
+class OpenAIKeyInfo(BaseModel):
+    has_override: bool
+    source: str
+    updated_at: str | None = None
+    updated_by: int | None = None
 
 
 # Default settings
@@ -235,3 +271,106 @@ async def reset_settings(
         "chat": DEFAULT_CHAT,
         "vectorstore": DEFAULT_VECTORSTORE,
     }
+
+
+@router.get("/me", response_model=UserSettingsResponse)
+async def get_user_settings(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return the authenticated user's preferences and API key status."""
+    prefs = await get_or_create_user_preferences(session, current_user.id)
+    has_key = await user_has_personal_api_key(session, current_user.id)
+    return UserSettingsResponse(
+        preferences=prefs.preferences,
+        personal_api_key_set=has_key,
+    )
+
+
+@router.put("/me", response_model=UserSettingsResponse)
+async def update_user_settings(
+    payload: UserPreferencesPayload,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Update per-user settings."""
+    has_key = await user_has_personal_api_key(session, current_user.id)
+    if payload.use_personal_api_key and not has_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Add a personal API key before enabling this option.",
+        )
+
+    updated = await update_user_preferences(
+        session,
+        current_user.id,
+        payload.model_dump(),
+    )
+
+    has_key = await user_has_personal_api_key(session, current_user.id)
+    return UserSettingsResponse(
+        preferences=updated,
+        personal_api_key_set=has_key,
+    )
+
+
+@router.post("/me/api-key")
+async def set_personal_key(
+    request: PersonalAPIKeyRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Store or update the user's personal API key."""
+    await set_personal_api_key(session, current_user.id, request.api_key)
+    await update_user_preferences(
+        session,
+        current_user.id,
+        {"use_personal_api_key": True},
+    )
+    return {"message": "Personal API key saved"}
+
+
+@router.delete("/me/api-key")
+async def remove_personal_key(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete the user's stored API key and revert to the shared key."""
+    await delete_personal_api_key(session, current_user.id)
+    await update_user_preferences(
+        session,
+        current_user.id,
+        {"use_personal_api_key": False},
+    )
+    return {"message": "Personal API key removed"}
+
+
+@router.get("/openai-key", response_model=OpenAIKeyInfo)
+async def get_openai_key(
+    current_user: User = Depends(get_current_admin_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return metadata about the active OpenAI API key source (admin only)."""
+    info = await get_global_openai_key_info(session)
+    return OpenAIKeyInfo(**info)
+
+
+@router.post("/openai-key")
+async def set_openai_key(
+    request: PersonalAPIKeyRequest,
+    current_user: User = Depends(get_current_admin_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Set a new application-wide OpenAI API key (admin only)."""
+    await set_global_openai_key(session, request.api_key, current_user.id)
+    return {"message": "Global OpenAI API key updated"}
+
+
+@router.delete("/openai-key")
+async def delete_openai_key(
+    current_user: User = Depends(get_current_admin_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Remove the admin override API key and fall back to .env (admin only)."""
+    await clear_global_openai_key(session)
+    return {"message": "Global OpenAI API key override removed"}

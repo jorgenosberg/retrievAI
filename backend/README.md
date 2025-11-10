@@ -108,12 +108,17 @@ Tasks:
 
 Using Alembic for migrations:
 
-```bash
-# Create migration
-alembic revision --autogenerate -m "description"
+# Create migration (from backend/)
+.venv/bin/alembic revision --autogenerate -m "description"
 
 # Apply migrations
-alembic upgrade head
+.venv/bin/alembic upgrade head
+```
+
+When running inside Docker, activate the venv and run Alembic from `/app`:
+
+```bash
+docker compose exec backend bash -lc ". .venv/bin/activate && cd /app && alembic upgrade head"
 ```
 
 ## Testing

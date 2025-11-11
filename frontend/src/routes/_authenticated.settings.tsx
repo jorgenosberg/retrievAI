@@ -122,6 +122,10 @@ function SettingsPage() {
   const [activeTab, setActiveTab] = useState<
     "personal" | "workspace" | "users" | "storage"
   >("personal");
+  const [showEmbeddingWarning, setShowEmbeddingWarning] = useState(false);
+  const [pendingEmbeddingModel, setPendingEmbeddingModel] = useState<
+    string | null
+  >(null);
 
   const { data: currentUser } = useQuery({
     queryKey: ["current-user"],
@@ -135,7 +139,7 @@ function SettingsPage() {
       queryFn: () => apiClient.getUserSettings(),
     });
 
-  // Track unsaved changes
+  // Track unsaved changes for personal preferences
   const hasUnsavedChanges = useMemo(() => {
     if (!userSettings?.preferences) return false;
     return (
@@ -162,6 +166,12 @@ function SettingsPage() {
       setAdminForm(adminSettings);
     }
   }, [adminSettings]);
+
+  // Track unsaved changes for admin settings (must be after adminSettings query)
+  const hasUnsavedAdminChanges = useMemo(() => {
+    if (!adminSettings || !adminForm) return false;
+    return JSON.stringify(adminForm) !== JSON.stringify(adminSettings);
+  }, [adminForm, adminSettings]);
 
   const { data: globalKeyInfo } = useQuery<GlobalKeyInfo>({
     queryKey: ["global-openai-key"],
@@ -299,10 +309,50 @@ function SettingsPage() {
   ];
 
   const chatModelOptions = [
-    { label: "GPT-4o Mini", value: "gpt-4o-mini" },
+    { label: "GPT-5", value: "gpt-5" },
+    { label: "GPT-5 Mini", value: "gpt-5-mini" },
+    { label: "GPT-5 Nano", value: "gpt-5-nano" },
+    { label: "GPT-4.1", value: "gpt-4.1" },
+    { label: "GPT-4.1 Mini", value: "gpt-4.1-mini" },
+    { label: "GPT-4.1 Nano", value: "gpt-4.1-nano" },
     { label: "GPT-4o", value: "gpt-4o" },
-    { label: "GPT-4 Turbo", value: "gpt-4-turbo" },
-    { label: "GPT-3.5 Turbo", value: "gpt-3.5-turbo" },
+    { label: "GPT-4o Mini", value: "gpt-4o-mini" },
+  ];
+
+  const embeddingModelOptions = [
+    {
+      label: "Text Embedding 3 Small (1536 dims)",
+      value: "text-embedding-3-small",
+      description: "High performance, low cost",
+    },
+    {
+      label: "Text Embedding 3 Large (3072 dims)",
+      value: "text-embedding-3-large",
+      description: "Best performance, higher cost",
+    },
+    {
+      label: "Ada 002 - Legacy (1536 dims)",
+      value: "text-embedding-ada-002",
+      description: "Previous generation model",
+    },
+  ];
+
+  const searchTypeOptions = [
+    {
+      label: "Similarity",
+      value: "similarity",
+      description: "Standard cosine similarity search",
+    },
+    {
+      label: "MMR (Maximal Marginal Relevance)",
+      value: "mmr",
+      description: "Balances relevance with diversity",
+    },
+    {
+      label: "Similarity Score Threshold",
+      value: "similarity_score_threshold",
+      description: "Only results above a threshold",
+    },
   ];
 
   const handlePrefSubmit = (event: FormEvent) => {
@@ -314,6 +364,53 @@ function SettingsPage() {
     event.preventDefault();
     if (!adminForm) return;
     updateAdminSettingsMutation.mutate(adminForm);
+  };
+
+  const handleEmbeddingModelChange = (newModel: string) => {
+    const currentModel =
+      adminForm?.embeddings?.model || adminSettings?.embeddings?.model;
+
+    // If changing from existing model, show warning
+    if (currentModel && currentModel !== newModel) {
+      setPendingEmbeddingModel(newModel);
+      setShowEmbeddingWarning(true);
+    } else {
+      // No previous model or same model, allow change directly
+      setAdminForm((prev) =>
+        prev
+          ? {
+              ...prev,
+              embeddings: {
+                ...prev.embeddings,
+                model: newModel,
+              },
+            }
+          : prev
+      );
+    }
+  };
+
+  const confirmEmbeddingModelChange = () => {
+    if (pendingEmbeddingModel) {
+      setAdminForm((prev) =>
+        prev
+          ? {
+              ...prev,
+              embeddings: {
+                ...prev.embeddings,
+                model: pendingEmbeddingModel,
+              },
+            }
+          : prev
+      );
+    }
+    setShowEmbeddingWarning(false);
+    setPendingEmbeddingModel(null);
+  };
+
+  const cancelEmbeddingModelChange = () => {
+    setShowEmbeddingWarning(false);
+    setPendingEmbeddingModel(null);
   };
 
   const tabs = [
@@ -613,26 +710,19 @@ function SettingsPage() {
                       Embeddings
                     </legend>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <InputField
-                        label="Model"
-                        value={adminForm.embeddings.model || ""}
-                        onChange={(value) =>
-                          setAdminForm((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  embeddings: {
-                                    ...prev.embeddings,
-                                    model: value,
-                                  },
-                                }
-                              : prev
-                          )
+                      <SelectField
+                        label="Embedding Model"
+                        value={
+                          adminForm.embeddings?.model ??
+                          "text-embedding-3-small"
                         }
+                        onChange={handleEmbeddingModelChange}
+                        options={embeddingModelOptions}
+                        description="⚠️ Changing this requires re-indexing all documents"
                       />
                       <NumberField
                         label="Chunk size"
-                        value={adminForm.embeddings.chunk_size || 0}
+                        value={adminForm.embeddings?.chunk_size ?? 1000}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -649,7 +739,7 @@ function SettingsPage() {
                       />
                       <NumberField
                         label="Chunk overlap"
-                        value={adminForm.embeddings.chunk_overlap || 0}
+                        value={adminForm.embeddings?.chunk_overlap ?? 200}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -666,7 +756,7 @@ function SettingsPage() {
                       />
                       <NumberField
                         label="Batch size"
-                        value={adminForm.embeddings.batch_size || 0}
+                        value={adminForm.embeddings?.batch_size ?? 100}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -683,7 +773,7 @@ function SettingsPage() {
                       />
                       <NumberField
                         label="Per-second rate limit"
-                        value={adminForm.embeddings.rate_limit || 0}
+                        value={adminForm.embeddings?.rate_limit ?? 3}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -706,9 +796,9 @@ function SettingsPage() {
                       Chat
                     </legend>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <InputField
-                        label="Model"
-                        value={adminForm.chat.model || ""}
+                      <SelectField
+                        label="Default Chat Model"
+                        value={adminForm.chat?.model ?? "gpt-4o-mini"}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -719,11 +809,13 @@ function SettingsPage() {
                               : prev
                           )
                         }
+                        options={chatModelOptions}
+                        description="Workspace default (users can override in their settings)"
                       />
                       <NumberField
                         label="Temperature"
                         step="0.1"
-                        value={adminForm.chat.temperature || 0}
+                        value={adminForm.chat?.temperature ?? 0.7}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -738,7 +830,7 @@ function SettingsPage() {
                       <PreferenceToggle
                         label="Streaming responses"
                         description="Enable server-sent events for faster responses."
-                        checked={Boolean(adminForm.chat.streaming)}
+                        checked={adminForm.chat?.streaming ?? true}
                         onChange={(checked) =>
                           setAdminForm((prev) =>
                             prev
@@ -760,7 +852,7 @@ function SettingsPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <NumberField
                         label="Top K"
-                        value={adminForm.vectorstore.k || 0}
+                        value={adminForm.vectorstore?.k ?? 4}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -777,7 +869,7 @@ function SettingsPage() {
                       />
                       <NumberField
                         label="Fetch K (MMR)"
-                        value={adminForm.vectorstore.fetch_k || 0}
+                        value={adminForm.vectorstore?.fetch_k ?? 20}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -792,9 +884,11 @@ function SettingsPage() {
                           )
                         }
                       />
-                      <InputField
-                        label="Search type"
-                        value={adminForm.vectorstore.search_type || ""}
+                      <SelectField
+                        label="Search Type"
+                        value={
+                          adminForm.vectorstore?.search_type ?? "similarity"
+                        }
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -808,19 +902,38 @@ function SettingsPage() {
                               : prev
                           )
                         }
+                        options={searchTypeOptions}
+                        description="Algorithm for document retrieval"
                       />
                     </div>
                   </fieldset>
 
-                  <button
-                    type="submit"
-                    className={`inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400 disabled:opacity-50 ${updateAdminSettingsMutation.isPending ? "cursor-progress" : "cursor-pointer"} disabled:cursor-not-allowed`}
-                    disabled={updateAdminSettingsMutation.isPending}
-                  >
-                    {updateAdminSettingsMutation.isPending
-                      ? "Saving..."
-                      : "Save admin settings"}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="submit"
+                      className={`inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400 disabled:opacity-50 ${updateAdminSettingsMutation.isPending ? "cursor-progress" : "cursor-pointer"} disabled:cursor-not-allowed`}
+                      disabled={
+                        updateAdminSettingsMutation.isPending ||
+                        !hasUnsavedAdminChanges
+                      }
+                    >
+                      {updateAdminSettingsMutation.isPending
+                        ? "Saving..."
+                        : "Save admin settings"}
+                    </button>
+                    {hasUnsavedAdminChanges &&
+                      !updateAdminSettingsMutation.isPending && (
+                        <span className="text-sm text-amber-600 dark:text-amber-400">
+                          • Unsaved changes
+                        </span>
+                      )}
+                    {updateAdminSettingsMutation.isSuccess &&
+                      !hasUnsavedAdminChanges && (
+                        <span className="text-sm text-green-600 dark:text-green-400">
+                          ✓ Saved!
+                        </span>
+                      )}
+                  </div>
                 </form>
               )}
             </div>
@@ -1131,7 +1244,7 @@ function SettingsPage() {
                   <button
                     type="button"
                     onClick={handleClearQueryCache}
-                    className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 cursor-pointer"
+                    className="text-xs font-medium text-danger-600 dark:text-danger-400 hover:text-danger-800 dark:hover:text-danger-300 cursor-pointer"
                   >
                     Clear
                   </button>
@@ -1161,7 +1274,7 @@ function SettingsPage() {
                   <button
                     type="button"
                     onClick={handleClearChatCache}
-                    className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 cursor-pointer"
+                    className="text-xs font-medium text-danger-600 dark:text-danger-400 hover:text-danger-800 dark:hover:text-danger-300 cursor-pointer"
                   >
                     Clear
                   </button>
@@ -1195,7 +1308,7 @@ function SettingsPage() {
                   <button
                     type="button"
                     onClick={handleClearPreferencesCache}
-                    className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 cursor-pointer"
+                    className="text-xs font-medium text-danger-600 dark:text-danger-400 hover:text-danger-800 dark:hover:text-danger-300 cursor-pointer"
                   >
                     Clear
                   </button>
@@ -1212,6 +1325,91 @@ function SettingsPage() {
                     </dd>
                   </div>
                 </dl>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Embedding Model Change Warning Modal */}
+        {showEmbeddingWarning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="max-w-lg rounded-lg bg-white dark:bg-zinc-900 p-6 shadow-xl">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                  <svg
+                    className="h-6 w-6 text-amber-600 dark:text-amber-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                    />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">
+                    Change Embedding Model?
+                  </h3>
+                  <div className="mt-2 space-y-2 text-sm text-gray-600 dark:text-zinc-400">
+                    <p className="font-medium text-amber-700 dark:text-amber-400">
+                      ⚠️ This is a critical operation that will break existing
+                      RAG functionality!
+                    </p>
+                    <p>Changing the embedding model means:</p>
+                    <ul className="ml-5 list-disc space-y-1">
+                      <li>
+                        All existing document embeddings are incompatible with
+                        the new model
+                      </li>
+                      <li>
+                        RAG search will not work correctly until all documents
+                        are re-indexed
+                      </li>
+                      <li>
+                        You must delete and re-upload all{" "}
+                        <span className="font-semibold">
+                          existing documents
+                        </span>
+                      </li>
+                      <li>
+                        Different models have different vector dimensions (1536
+                        vs 3072)
+                      </li>
+                    </ul>
+                    <p className="mt-3 font-medium text-gray-900 dark:text-zinc-100">
+                      Are you absolutely sure you want to change from{" "}
+                      <code className="rounded bg-gray-100 dark:bg-zinc-800 px-1 py-0.5">
+                        {adminForm?.embeddings?.model ||
+                          adminSettings?.embeddings?.model}
+                      </code>{" "}
+                      to{" "}
+                      <code className="rounded bg-gray-100 dark:bg-zinc-800 px-1 py-0.5">
+                        {pendingEmbeddingModel}
+                      </code>
+                      ?
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={cancelEmbeddingModelChange}
+                  className="rounded-md border border-gray-300 dark:border-zinc-600 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmEmbeddingModelChange}
+                  className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
+                >
+                  Yes, Change Model
+                </button>
               </div>
             </div>
           </div>
@@ -1261,28 +1459,6 @@ function PreferenceToggle({
   );
 }
 
-function InputField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-zinc-300">
-      {label}
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
-      />
-    </label>
-  );
-}
-
 function NumberField({
   label,
   value,
@@ -1304,6 +1480,42 @@ function NumberField({
         onChange={(e) => onChange(Number(e.target.value))}
         className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
       />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  description,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ label: string; value: string; description?: string }>;
+  description?: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-zinc-300">
+      {label}
+      {description && (
+        <span className="text-xs text-gray-500 dark:text-zinc-500">
+          {description}
+        </span>
+      )}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

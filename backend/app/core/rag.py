@@ -32,13 +32,20 @@ async def get_chat_llm(
     """
     Get ChatOpenAI instance with settings from database.
 
+    Priority order for model selection:
+    1. User's personal preference (default_chat_model)
+    2. Admin workspace settings (chat.model)
+    3. Fallback default (gpt-4o-mini)
+
     Args:
         streaming: Whether to enable streaming
+        user_id: User ID for personal preferences
 
     Returns:
         ChatOpenAI instance
     """
     async with AsyncSessionLocal() as session:
+        # Start with admin workspace settings
         result = await session.execute(
             select(AppSettings).where(AppSettings.key == "chat")
         )
@@ -51,6 +58,14 @@ async def get_chat_llm(
             # Defaults
             model = "gpt-4o-mini"
             temperature = 0.7
+
+        # Check for user-specific preference override
+        if user_id is not None:
+            from app.core.user_settings import get_or_create_user_preferences
+            prefs = await get_or_create_user_preferences(session, user_id)
+            user_model = prefs.preferences.get("default_chat_model")
+            if user_model:
+                model = user_model
 
     api_key = await resolve_openai_api_key(user_id=user_id)
 

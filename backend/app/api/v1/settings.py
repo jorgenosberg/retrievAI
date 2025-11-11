@@ -188,6 +188,36 @@ async def get_available_models():
     return {
         "chat_models": [
             {
+                "id": "gpt-5",
+                "name": "GPT-5",
+                "description": "Latest flagship model with enhanced capabilities",
+            },
+            {
+                "id": "gpt-5-mini",
+                "name": "GPT-5 Mini",
+                "description": "Efficient version of GPT-5",
+            },
+            {
+                "id": "gpt-5-nano",
+                "name": "GPT-5 Nano",
+                "description": "Lightweight version of GPT-5",
+            },
+            {
+                "id": "gpt-4.1",
+                "name": "GPT-4.1",
+                "description": "Updated GPT-4 generation model",
+            },
+            {
+                "id": "gpt-4.1-mini",
+                "name": "GPT-4.1 Mini",
+                "description": "Efficient version of GPT-4.1",
+            },
+            {
+                "id": "gpt-4.1-nano",
+                "name": "GPT-4.1 Nano",
+                "description": "Lightweight version of GPT-4.1",
+            },
+            {
                 "id": "gpt-4o",
                 "name": "GPT-4o",
                 "description": "Most capable model, multimodal",
@@ -197,35 +227,28 @@ async def get_available_models():
                 "name": "GPT-4o Mini",
                 "description": "Fast and affordable, great for most tasks",
             },
-            {
-                "id": "gpt-4-turbo",
-                "name": "GPT-4 Turbo",
-                "description": "Previous generation flagship model",
-            },
-            {
-                "id": "gpt-3.5-turbo",
-                "name": "GPT-3.5 Turbo",
-                "description": "Fast and affordable legacy model",
-            },
         ],
         "embedding_models": [
             {
                 "id": "text-embedding-3-small",
                 "name": "Text Embedding 3 Small",
-                "description": "High performance, low cost",
+                "description": "High performance, low cost (1536 dimensions)",
                 "dimensions": 1536,
+                "note": "Changing embedding models requires re-indexing all documents",
             },
             {
                 "id": "text-embedding-3-large",
                 "name": "Text Embedding 3 Large",
-                "description": "Best performance, higher cost",
+                "description": "Best performance, higher cost (3072 dimensions)",
                 "dimensions": 3072,
+                "note": "Changing embedding models requires re-indexing all documents",
             },
             {
                 "id": "text-embedding-ada-002",
                 "name": "Ada 002 (Legacy)",
-                "description": "Previous generation embedding model",
+                "description": "Previous generation embedding model (1536 dimensions)",
                 "dimensions": 1536,
+                "note": "Changing embedding models requires re-indexing all documents",
             },
         ],
     }

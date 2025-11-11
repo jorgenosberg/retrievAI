@@ -44,3 +44,9 @@ class PasswordResetConfirm(BaseModel):
 
     token: str
     new_password: str = Field(..., min_length=8)
+
+
+class RefreshTokenRequest(BaseModel):
+    """Refresh token request model."""
+
+    refresh_token: str

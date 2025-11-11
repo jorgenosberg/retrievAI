@@ -11,6 +11,7 @@ from app.core.security import (
     get_password_hash,
     create_access_token,
     create_refresh_token,
+    verify_token,
 )
 from app.models import auth as auth_models
 from app.dependencies import get_current_user
@@ -108,6 +109,49 @@ async def get_current_user_info(
 ):
     """Get current authenticated user information."""
     return current_user
+
+
+@router.post("/refresh", response_model=auth_models.Token)
+async def refresh_access_token(
+    refresh_data: auth_models.RefreshTokenRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Refresh access token using refresh token.
+
+    Returns new access and refresh tokens.
+    """
+    # Verify refresh token
+    user_id = verify_token(refresh_data.refresh_token, token_type="refresh")
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Get user from database
+    statement = select(User).where(User.id == user_id)
+    result = await session.execute(statement)
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Create new tokens
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
 
 
 @router.put("/me/password")

@@ -18,12 +18,12 @@ export function DocumentStats() {
   if (showSkeleton) {
     return (
       <div className="mb-6">
-        <div className="mb-2 h-4 w-32 rounded bg-gray-200" />
+        <div className="mb-2 h-4 w-32 rounded bg-gray-200 dark:bg-zinc-700" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           {skeletonCards.map((_, i) => (
-            <div key={i} className="animate-pulse rounded-lg bg-white p-6 shadow">
-              <div className="mb-3 h-4 w-1/2 rounded bg-gray-200" />
-              <div className="h-8 w-3/4 rounded bg-gray-200" />
+            <div key={i} className="animate-pulse rounded-lg bg-white dark:bg-zinc-900 p-6 shadow">
+              <div className="mb-3 h-4 w-1/2 rounded bg-gray-200 dark:bg-zinc-700" />
+              <div className="h-8 w-3/4 rounded bg-gray-200 dark:bg-zinc-700" />
             </div>
           ))}
         </div>
@@ -40,7 +40,7 @@ export function DocumentStats() {
           </p>
           <button
             onClick={() => refetch()}
-            className="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+            className="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 cursor-pointer"
           >
             Retry
           </button>
@@ -54,21 +54,21 @@ export function DocumentStats() {
   }
 
   const statusColors = {
-    [DocumentStatus.COMPLETED]: 'text-green-600',
-    [DocumentStatus.PROCESSING]: 'text-blue-600',
-    [DocumentStatus.FAILED]: 'text-red-600',
+    [DocumentStatus.COMPLETED]: 'text-green-600 dark:text-green-400',
+    [DocumentStatus.PROCESSING]: 'text-primary-600 dark:text-primary-400',
+    [DocumentStatus.FAILED]: 'text-danger-600 dark:text-danger-400',
   }
 
   return (
     <section className="mb-6">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-gray-700">Repository stats</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-sm font-semibold text-gray-700 dark:text-zinc-300">Repository stats</p>
+          <p className="text-xs text-gray-500 dark:text-zinc-500">
             Snapshot refreshed every 30 minutes unless you update it manually.
           </p>
           {error && (
-            <p className="text-xs text-red-600">
+            <p className="text-xs text-danger-600 dark:text-danger-400">
               Showing cached data. Refresh to try loading the latest snapshot.
             </p>
           )}
@@ -76,11 +76,11 @@ export function DocumentStats() {
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className={`inline-flex items-center rounded-md border border-gray-300 dark:border-zinc-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-zinc-300 transition-colors hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 ${isFetching ? 'cursor-progress' : 'cursor-pointer'}`}
         >
           {isFetching ? (
             <>
-              <span className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+              <span className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-primary-500 dark:border-primary-400 border-t-transparent" />
               Updating...
             </>
           ) : (
@@ -94,17 +94,17 @@ export function DocumentStats() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         {/* Total Documents */}
-        <div className="rounded-lg bg-white p-6 shadow transition-shadow hover:shadow-md">
+        <div className="rounded-lg bg-white dark:bg-zinc-900 p-6 shadow transition-shadow hover:shadow-md">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Documents</p>
-              <p className="mt-1 text-3xl font-bold text-gray-900">
+              <p className="text-sm font-medium text-gray-600 dark:text-zinc-400">Total Documents</p>
+              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-zinc-100">
                 {stats.total_documents}
               </p>
             </div>
-            <div className="rounded-full bg-blue-100 p-3">
+            <div className="rounded-full bg-primary-100 dark:bg-primary-900/30 p-3">
               <svg
-                className="h-6 w-6 text-blue-600"
+                className="h-6 w-6 text-primary-600 dark:text-primary-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -121,17 +121,17 @@ export function DocumentStats() {
         </div>
 
         {/* Total Chunks */}
-        <div className="rounded-lg bg-white p-6 shadow transition-shadow hover:shadow-md">
+        <div className="rounded-lg bg-white dark:bg-zinc-900 p-6 shadow transition-shadow hover:shadow-md">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Chunks</p>
-              <p className="mt-1 text-3xl font-bold text-gray-900">
+              <p className="text-sm font-medium text-gray-600 dark:text-zinc-400">Total Chunks</p>
+              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-zinc-100">
                 {stats.total_chunks.toLocaleString()}
               </p>
             </div>
-            <div className="rounded-full bg-purple-100 p-3">
+            <div className="rounded-full bg-purple-100 dark:bg-purple-900/30 p-3">
               <svg
-                className="h-6 w-6 text-purple-600"
+                className="h-6 w-6 text-purple-600 dark:text-purple-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -148,18 +148,18 @@ export function DocumentStats() {
         </div>
 
         {/* Storage Used */}
-        <div className="rounded-lg bg-white p-6 shadow transition-shadow hover:shadow-md">
+        <div className="rounded-lg bg-white dark:bg-zinc-900 p-6 shadow transition-shadow hover:shadow-md">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Storage Used</p>
-              <p className="mt-1 text-3xl font-bold text-gray-900">
+              <p className="text-sm font-medium text-gray-600 dark:text-zinc-400">Storage Used</p>
+              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-zinc-100">
                 {stats.storage_used_mb.toFixed(1)}
-                <span className="ml-1 text-lg text-gray-500">MB</span>
+                <span className="ml-1 text-lg text-gray-500 dark:text-zinc-400">MB</span>
               </p>
             </div>
-            <div className="rounded-full bg-green-100 p-3">
+            <div className="rounded-full bg-green-100 dark:bg-green-900/30 p-3">
               <svg
-                className="h-6 w-6 text-green-600"
+                className="h-6 w-6 text-green-600 dark:text-green-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -176,19 +176,19 @@ export function DocumentStats() {
         </div>
 
         {/* Status Breakdown */}
-        <div className="rounded-lg bg-white p-6 shadow transition-shadow hover:shadow-md">
-          <p className="mb-3 text-sm font-medium text-gray-600">By Status</p>
+        <div className="rounded-lg bg-white dark:bg-zinc-900 p-6 shadow transition-shadow hover:shadow-md">
+          <p className="mb-3 text-sm font-medium text-gray-600 dark:text-zinc-400">By Status</p>
           <div className="space-y-2">
             {Object.entries(stats.by_status).map(([status, count]) => (
               <div key={status} className="flex items-center justify-between">
                 <span
                   className={`text-xs font-medium capitalize ${
-                    statusColors[status as DocumentStatus] ?? 'text-gray-600'
+                    statusColors[status as DocumentStatus] ?? 'text-gray-600 dark:text-zinc-400'
                   }`}
                 >
                   {status}
                 </span>
-                <span className="text-sm font-semibold text-gray-900">
+                <span className="text-sm font-semibold text-gray-900 dark:text-zinc-100">
                   {count}
                 </span>
               </div>

@@ -174,12 +174,12 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
               <p className="text-sm text-gray-500 mt-1">Page {source.metadata.page}</p>
             )}
             {contextData && (
-              <p className="text-sm text-blue-600 mt-1">{getPositionLabel()}</p>
+              <p className="text-sm text-primary-600 dark:text-primary-400 mt-1">{getPositionLabel()}</p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors ml-4"
+            className="text-gray-400 hover:text-gray-600 transition-colors ml-4 cursor-pointer"
             title="Close"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -192,7 +192,7 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
         <div className="flex-1 overflow-y-auto p-6">
           {loading && (
             <div className="flex items-center justify-center py-12">
-              <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-8 w-8 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -200,7 +200,7 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+            <div className="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg p-4 text-danger-700 dark:text-danger-300">
               <p className="font-semibold">Error loading context</p>
               <p className="text-sm mt-1">{error}</p>
             </div>
@@ -208,8 +208,8 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
 
           {!loading && !error && currentChunk && (
             <div className="prose prose-sm max-w-none">
-              <div className={`p-4 rounded-lg ${currentView === 'current' ? 'bg-blue-50 border-2 border-blue-300' : 'bg-gray-50'}`}>
-                <p className="whitespace-pre-wrap leading-relaxed text-gray-800">
+              <div className={`p-4 rounded-lg ${currentView === 'current' ? 'bg-primary-50 dark:bg-primary-900/20 border-2 border-primary-300 dark:border-primary-700' : 'bg-gray-50 dark:bg-zinc-800'}`}>
+                <p className="whitespace-pre-wrap leading-relaxed text-gray-800 dark:text-zinc-200">
                   {currentChunk.content}
                 </p>
               </div>
@@ -224,7 +224,7 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
               <button
                 onClick={handlePrevious}
                 disabled={!canGoPrevious()}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -232,14 +232,14 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
                 <span className="font-medium">Previous</span>
               </button>
 
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-gray-600 dark:text-zinc-300">
                 {currentView === 'current' && (
-                  <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-medium">
+                  <span className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300 rounded-full font-medium">
                     Current Chunk
                   </span>
                 )}
                 {currentView !== 'current' && (
-                  <span className="text-gray-500">
+                  <span className="text-gray-500 dark:text-zinc-400">
                     {currentView === 'prev' ? 'Before' : 'After'} current chunk
                   </span>
                 )}
@@ -248,7 +248,7 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
               <button
                 onClick={handleNext}
                 disabled={!canGoNext()}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 <span className="font-medium">Next</span>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

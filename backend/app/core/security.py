@@ -4,22 +4,18 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.config import get_settings
 
 settings = get_settings()
 
-# Password hashing with bcrypt backend explicitly set
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-    bcrypt__default_rounds=12,
-)
+# Bcrypt rounds for password hashing
+BCRYPT_ROUNDS = 12
 
 
-def _prepare_password(password: str) -> str:
+def _prepare_password(password: str) -> bytes:
     """
     Prepare password for bcrypt hashing.
     Bcrypt has a 72-byte limit. For longer passwords, we pre-hash with SHA-256.
@@ -28,20 +24,24 @@ def _prepare_password(password: str) -> str:
     password_bytes = password.encode('utf-8')
     if len(password_bytes) > 72:
         # Pre-hash with SHA-256 for passwords > 72 bytes
-        return hashlib.sha256(password_bytes).hexdigest()
-    return password
+        hashed = hashlib.sha256(password_bytes).hexdigest()
+        return hashed.encode('utf-8')
+    return password_bytes
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash."""
     prepared_password = _prepare_password(plain_password)
-    return pwd_context.verify(prepared_password, hashed_password)
+    hashed_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(prepared_password, hashed_bytes)
 
 
 def get_password_hash(password: str) -> str:
     """Hash a password."""
     prepared_password = _prepare_password(password)
-    return pwd_context.hash(prepared_password)
+    salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
+    hashed = bcrypt.hashpw(prepared_password, salt)
+    return hashed.decode('utf-8')
 
 
 def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None) -> str:
@@ -78,5 +78,17 @@ def verify_token(token: str, token_type: str = "access") -> Optional[int]:
             return None
 
         return int(user_id)
+    except JWTError:
+        return None
+
+
+def decode_token(token: str) -> Optional[dict]:
+    """
+    Decode a JWT token and return the full payload.
+    Returns None if token is invalid.
+    """
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload
     except JWTError:
         return None

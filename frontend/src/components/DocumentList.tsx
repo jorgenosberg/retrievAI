@@ -59,9 +59,9 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
 
   const getStatusBadge = (status: DocumentStatus) => {
     const styles = {
-      [DocumentStatus.COMPLETED]: 'bg-green-100 text-green-800',
-      [DocumentStatus.PROCESSING]: 'bg-blue-100 text-blue-800',
-      [DocumentStatus.FAILED]: 'bg-red-100 text-red-800',
+      [DocumentStatus.COMPLETED]: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400',
+      [DocumentStatus.PROCESSING]: 'bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-400',
+      [DocumentStatus.FAILED]: 'bg-danger-100 dark:bg-danger-900/30 text-danger-800 dark:text-danger-400',
     }
 
     return (
@@ -77,15 +77,15 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
 
   if (isLoading && documents.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white dark:bg-zinc-900 rounded-lg shadow">
         <div className="p-6 space-y-4">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="animate-pulse">
               <div className="flex items-center space-x-4">
-                <div className="h-12 w-12 bg-gray-200 rounded"></div>
+                <div className="h-12 w-12 bg-gray-200 dark:bg-zinc-700 rounded"></div>
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  <div className="h-4 bg-gray-200 dark:bg-zinc-700 rounded w-3/4"></div>
+                  <div className="h-3 bg-gray-200 dark:bg-zinc-700 rounded w-1/2"></div>
                 </div>
               </div>
             </div>
@@ -97,8 +97,8 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
 
   if (error && documents.length === 0) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800 text-sm">
+      <div className="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg p-4">
+        <p className="text-danger-800 dark:text-danger-300 text-sm">
           Failed to load documents: {error.message}
         </p>
       </div>
@@ -107,9 +107,9 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
 
   if (documents.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow p-12 text-center">
+      <div className="bg-white dark:bg-zinc-900 rounded-lg shadow p-12 text-center">
         <div className="flex flex-col items-center space-y-4">
-          <div className="bg-gray-100 rounded-full p-6">
+          <div className="bg-gray-100 dark:bg-zinc-800 rounded-full p-6">
             <svg
               className="w-12 h-12 text-gray-400"
               fill="none"
@@ -125,10 +125,10 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
             </svg>
           </div>
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-1">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
               No documents yet
             </h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-zinc-400">
               Upload your first document to get started
             </p>
           </div>
@@ -140,9 +140,9 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
   return (
     <div className="space-y-4">
       {/* Filter Bar */}
-      <div className="bg-white rounded-lg shadow p-4">
+      <div className="bg-white dark:bg-zinc-900 rounded-lg shadow p-4">
         <div className="flex items-center space-x-4">
-          <label className="text-sm font-medium text-gray-700">
+          <label className="text-sm font-medium text-gray-700 dark:text-zinc-300">
             Filter by status:
           </label>
           <select
@@ -151,7 +151,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
               setStatusFilter(e.target.value as DocumentStatus | '')
               setPage(1)
             }}
-            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+            className="rounded-md border-gray-300 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:focus:border-primary-400 dark:focus:ring-primary-400 text-sm"
           >
             <option value="">All</option>
             <option value={DocumentStatus.COMPLETED}>Completed</option>
@@ -161,12 +161,12 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
 
           <div className="flex-1"></div>
 
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-gray-500 dark:text-zinc-400">
             {documents.length} document{documents.length !== 1 ? 's' : ''}
           </span>
           {isFetching && (
-            <span className="inline-flex items-center text-xs text-gray-400">
-              <span className="mr-1 h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+            <span className="inline-flex items-center text-xs text-gray-400 dark:text-zinc-500">
+              <span className="mr-1 h-2.5 w-2.5 animate-spin rounded-full border-2 border-primary-400 dark:border-primary-500 border-t-transparent" />
               Updating
             </span>
           )}
@@ -174,25 +174,25 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
       </div>
 
       {error && documents.length > 0 && (
-        <div className="rounded border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800">
+        <div className="rounded border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-3 text-xs text-yellow-800 dark:text-yellow-300">
           Showing cached results. Refresh to retry: {error.message}
         </div>
       )}
 
       {/* Document List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="divide-y divide-gray-200">
+      <div className="bg-white dark:bg-zinc-900 rounded-lg shadow overflow-hidden">
+        <div className="divide-y divide-gray-200 dark:divide-zinc-700">
           {documents.map((doc: Document) => (
             <div
               key={doc.id}
-              className="p-4 hover:bg-gray-50 transition-colors"
+              className="p-4 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
             >
               <div className="flex items-center space-x-4">
                 {/* File Icon */}
                 <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
                     <svg
-                      className="w-6 h-6 text-blue-600"
+                      className="w-6 h-6 text-primary-600 dark:text-primary-400"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -213,11 +213,11 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
                     <div className="flex-1 min-w-0">
                       <button
                         onClick={() => onDocumentClick?.(doc)}
-                        className="text-sm font-medium text-gray-900 hover:text-blue-600 truncate block"
+                        className="text-sm font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 truncate block cursor-pointer"
                       >
                         {doc.filename}
                       </button>
-                      <div className="flex items-center space-x-3 mt-1 text-xs text-gray-500">
+                      <div className="flex items-center space-x-3 mt-1 text-xs text-gray-500 dark:text-zinc-400">
                         <span>{formatFileSize(doc.file_size)}</span>
                         <span>•</span>
                         <span>{doc.chunk_count} chunks</span>
@@ -233,7 +233,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
                       <button
                         onClick={() => handleDelete(doc.id, doc.filename)}
                         disabled={deleteMutation.isPending}
-                        className="text-gray-400 hover:text-red-600 disabled:opacity-50"
+                        className={`text-gray-400 hover:text-danger-600 dark:hover:text-danger-400 disabled:opacity-50 ${deleteMutation.isPending ? 'cursor-progress' : 'cursor-pointer'} disabled:cursor-not-allowed`}
                         title="Delete document"
                       >
                         <svg
@@ -254,7 +254,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
                   {/* Error Message */}
                   {doc.status === DocumentStatus.FAILED &&
                     doc.error_message && (
-                      <div className="mt-2 text-xs text-red-600 bg-red-50 rounded px-2 py-1">
+                      <div className="mt-2 text-xs text-danger-600 dark:text-danger-400 bg-danger-50 dark:bg-danger-900/20 rounded px-2 py-1">
                         {doc.error_message}
                       </div>
                     )}
@@ -267,23 +267,23 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
 
       {/* Pagination */}
       {documents.length === pageSize && (
-        <div className="flex items-center justify-between bg-white rounded-lg shadow px-4 py-3">
+        <div className="flex items-center justify-between bg-white dark:bg-zinc-900 rounded-lg shadow px-4 py-3">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-600 rounded-md hover:bg-gray-50 dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             Previous
           </button>
 
-          <span className="text-sm text-gray-700">
+          <span className="text-sm text-gray-700 dark:text-zinc-300">
             Page {page}
           </span>
 
           <button
             onClick={() => setPage((p) => p + 1)}
             disabled={documents.length < pageSize}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-600 rounded-md hover:bg-gray-50 dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             Next
           </button>

@@ -3,12 +3,7 @@
  */
 
 import { useState, useRef, DragEvent, ChangeEvent } from 'react'
-import {
-  useUploadDocument,
-  useSupportedTypes,
-  useUploadStatus,
-} from '@/hooks/useDocuments'
-import type { UploadResponse } from '@/types/document'
+import { useUploadDocument, useSupportedTypes } from '@/hooks/useDocuments'
 
 interface UploadItem {
   file: File
@@ -199,8 +194,8 @@ export function UploadZone() {
       <div
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
           isDragging
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-gray-300 hover:border-gray-400'
+            ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
+            : 'border-gray-300 dark:border-zinc-600 hover:border-gray-400 dark:hover:border-zinc-500'
         }`}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
@@ -217,9 +212,9 @@ export function UploadZone() {
         />
 
         <div className="flex flex-col items-center space-y-4">
-          <div className="bg-blue-100 rounded-full p-4">
+          <div className="bg-primary-100 dark:bg-primary-900/30 rounded-full p-4">
             <svg
-              className="w-8 h-8 text-blue-600"
+              className="w-8 h-8 text-primary-600 dark:text-primary-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -234,11 +229,11 @@ export function UploadZone() {
           </div>
 
           <div>
-            <p className="text-lg font-medium text-gray-900 mb-1">
+            <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
               Drop files here or{' '}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-blue-600 hover:text-blue-700 underline"
+                className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 underline cursor-pointer"
               >
                 browse
               </button>
@@ -257,16 +252,16 @@ export function UploadZone() {
 
       {/* Upload Progress List */}
       {uploads.size > 0 && (
-        <div className="bg-white rounded-lg shadow divide-y">
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow divide-y divide-gray-200 dark:divide-zinc-700">
           {Array.from(uploads.entries()).map(([uploadId, upload]) => (
             <div key={uploadId} className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center space-x-3 flex-1 min-w-0">
                   {/* Status Icon */}
                   {upload.status === 'completed' && (
-                    <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <div className="flex-shrink-0 w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
                       <svg
-                        className="w-5 h-5 text-green-600"
+                        className="w-5 h-5 text-green-600 dark:text-green-400"
                         fill="currentColor"
                         viewBox="0 0 20 20"
                       >
@@ -279,9 +274,9 @@ export function UploadZone() {
                     </div>
                   )}
                   {upload.status === 'failed' && (
-                    <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                    <div className="flex-shrink-0 w-8 h-8 bg-danger-100 dark:bg-danger-900/30 rounded-full flex items-center justify-center">
                       <svg
-                        className="w-5 h-5 text-red-600"
+                        className="w-5 h-5 text-danger-600 dark:text-danger-400"
                         fill="currentColor"
                         viewBox="0 0 20 20"
                       >
@@ -295,9 +290,9 @@ export function UploadZone() {
                   )}
                   {(upload.status === 'uploading' ||
                     upload.status === 'processing') && (
-                    <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <div className="flex-shrink-0 w-8 h-8 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center">
                       <svg
-                        className="w-5 h-5 text-blue-600 animate-spin"
+                        className="w-5 h-5 text-primary-600 dark:text-primary-400 animate-spin"
                         fill="none"
                         viewBox="0 0 24 24"
                       >
@@ -320,10 +315,10 @@ export function UploadZone() {
 
                   {/* File Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                       {upload.file.name}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-500 dark:text-zinc-400">
                       {formatFileSize(upload.file.size)} •{' '}
                       {upload.status === 'uploading' && 'Uploading...'}
                       {upload.status === 'processing' && 'Processing...'}
@@ -336,7 +331,7 @@ export function UploadZone() {
                 {/* Remove Button */}
                 <button
                   onClick={() => removeUpload(uploadId)}
-                  className="ml-4 text-gray-400 hover:text-gray-600"
+                  className="ml-4 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer"
                 >
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path
@@ -351,9 +346,9 @@ export function UploadZone() {
               {/* Progress Bar */}
               {(upload.status === 'uploading' ||
                 upload.status === 'processing') && (
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-gray-200 dark:bg-zinc-700 rounded-full h-2">
                   <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${upload.progress}%` }}
                   ></div>
                 </div>
@@ -361,7 +356,7 @@ export function UploadZone() {
 
               {/* Error Message */}
               {upload.status === 'failed' && upload.error && (
-                <p className="text-xs text-red-600 mt-1">{upload.error}</p>
+                <p className="text-xs text-danger-600 dark:text-danger-400 mt-1">{upload.error}</p>
               )}
             </div>
           ))}

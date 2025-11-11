@@ -1,12 +1,68 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { apiClient } from '@/lib/api'
 import type { ChatMessage, Source, SSEEvent } from '@/types/chat'
-import { loadChatSession, persistChatSession } from '@/lib/chatStorage'
+import {
+  loadChatSession,
+  persistChatSession,
+  subscribeToChatSessions,
+  generateChatSessionId,
+  getSessionConversationId,
+} from '@/lib/chatStorage'
+
+const areSourcesEqual = (a?: Source[], b?: Source[]) => {
+  const listA = a ?? []
+  const listB = b ?? []
+  if (listA.length !== listB.length) {
+    return false
+  }
+  return listA.every((source, index) => {
+    const other = listB[index]
+    if (!other) {
+      return false
+    }
+    if (source.content !== other.content) {
+      return false
+    }
+    const metaA = source.metadata ?? {}
+    const metaB = other.metadata ?? {}
+    return (
+      metaA.source === metaB.source &&
+      metaA.page === metaB.page &&
+      metaA.file_hash === metaB.file_hash &&
+      metaA.title === metaB.title &&
+      metaA.doc_num === metaB.doc_num
+    )
+  })
+}
+
+const areMessagesEqual = (a: ChatMessage[], b: ChatMessage[]) => {
+  if (a === b) {
+    return true
+  }
+  if (a.length !== b.length) {
+    return false
+  }
+  return a.every((message, index) => {
+    const other = b[index]
+    if (!other) {
+      return false
+    }
+    return (
+      message.role === other.role &&
+      message.content === other.content &&
+      message.isStreaming === other.isStreaming &&
+      areSourcesEqual(message.sources, other.sources)
+    )
+  })
+}
 
 export function useChat(conversationId?: string) {
-  const sessionId = conversationId ?? 'default'
+  const sessionId = conversationId ?? generateChatSessionId()
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     loadChatSession(sessionId)
+  )
+  const [sessionConversationId, setSessionConversationId] = useState<string | null>(
+    () => getSessionConversationId(sessionId) ?? null
   )
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingMessage, setStreamingMessage] = useState('')
@@ -17,11 +73,38 @@ export function useChat(conversationId?: string) {
 
   useEffect(() => {
     setMessages(loadChatSession(sessionId))
+    setSessionConversationId(getSessionConversationId(sessionId) ?? null)
   }, [sessionId])
 
   useEffect(() => {
-    persistChatSession(sessionId, messages)
-  }, [messages, sessionId])
+    const unsubscribe = subscribeToChatSessions(() => {
+      const latestMessages = loadChatSession(sessionId)
+      setMessages((prev) =>
+        areMessagesEqual(prev, latestMessages) ? prev : latestMessages
+      )
+      const storedConversationId = getSessionConversationId(sessionId) ?? null
+      setSessionConversationId((prev) =>
+        prev === storedConversationId ? prev : storedConversationId
+      )
+    })
+    return unsubscribe
+  }, [sessionId])
+
+  useEffect(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setIsStreaming(false)
+    setStreamingMessage('')
+    setStreamingSources([])
+    setStatusMessage('')
+    setError(null)
+  }, [sessionId])
+
+  useEffect(() => {
+    persistChatSession(sessionId, messages, sessionConversationId)
+  }, [messages, sessionId, sessionConversationId])
 
   const sendMessage = useCallback(
     async (message: string) => {
@@ -51,7 +134,7 @@ export function useChat(conversationId?: string) {
       try {
         await apiClient.streamChat(
           message,
-          conversationId,
+          sessionConversationId ?? undefined,
           (event: SSEEvent) => {
             switch (event.type) {
               case 'start':
@@ -81,7 +164,7 @@ export function useChat(conversationId?: string) {
                 setStatusMessage('') // Clear status when streaming starts
                 break
 
-              case 'done':
+              case 'done': {
                 // Finalize the assistant message using the locally tracked values
                 const assistantMessage: ChatMessage = {
                   role: 'assistant',
@@ -93,11 +176,18 @@ export function useChat(conversationId?: string) {
                 setStreamingSources([])
                 setStatusMessage('Response complete')
                 break
+              }
 
-              case 'saved':
-                // Message saved to database
-                console.log('Message saved:', event.content)
+              case 'saved': {
+                // Persist conversation metadata for this session
+                const savedConversationId = event.content?.conversation_id
+                if (typeof savedConversationId === 'string') {
+                  setSessionConversationId((prev) =>
+                    prev === savedConversationId ? prev : savedConversationId
+                  )
+                }
                 break
+              }
 
               case 'error':
                 setError(event.content.message || 'An error occurred')
@@ -129,7 +219,7 @@ export function useChat(conversationId?: string) {
         setStatusMessage('')
       }
     },
-    [conversationId, isStreaming]
+    [isStreaming, sessionId]
   )
 
   const stopStreaming = useCallback(() => {
@@ -148,8 +238,8 @@ export function useChat(conversationId?: string) {
     setStreamingSources([])
     setStatusMessage('')
     setError(null)
-    persistChatSession(sessionId, [])
-  }, [sessionId])
+    persistChatSession(sessionId, [], sessionConversationId)
+  }, [sessionId, sessionConversationId])
 
   return {
     messages,
@@ -161,5 +251,6 @@ export function useChat(conversationId?: string) {
     sendMessage,
     stopStreaming,
     clearMessages,
+    conversationId: sessionConversationId ?? undefined,
   }
 }

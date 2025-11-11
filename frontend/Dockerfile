@@ -1,6 +1,9 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+ARG VITE_API_URL=http://backend:8000
+ENV VITE_API_URL=${VITE_API_URL}
+
 WORKDIR /app
 
 # Copy package files
@@ -17,6 +20,10 @@ RUN npm run build
 
 # Production stage
 FROM nginx:alpine
+
+# Carry over API endpoint for reference/diagnostics
+ARG VITE_API_URL=http://backend:8000
+ENV VITE_API_URL=${VITE_API_URL}
 
 # Copy built files from builder
 COPY --from=builder /app/dist /usr/share/nginx/html

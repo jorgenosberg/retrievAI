@@ -65,6 +65,13 @@ src/
 - 🚧 Document upload with progress
 - 🚧 Admin panel
 
+## Client-side caching
+
+- 🔁 TanStack Query is persisted to `localStorage` for 24h to keep document stats/lists instant on reload.
+- 💬 Chat sessions (messages + sources) stay in the browser for 30 days; they never leave the device unless you send them.
+- 🎚️ Theme + preference toggles are mirrored locally so dark mode applies before the API responds.
+- 🧹 Users can wipe any of this (documents cache, chat history, preferences, or all at once) from **Settings → Local cache & privacy**.
+
 ## Environment Variables
 
 Vite automatically proxies `/api` requests to `http://localhost:8000` in development.

@@ -1,26 +1,19 @@
-import { useEffect, useState, type SVGProps } from 'react'
+import { type SVGProps } from 'react'
 import { useDocumentStats } from '@/hooks/useDocuments'
 import { DocumentStatus } from '@/types/document'
 
 const skeletonCards = [...Array(4)]
 
 export function DocumentStats() {
-  const [shouldFetch, setShouldFetch] = useState(false)
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setShouldFetch(true), 600)
-    return () => window.clearTimeout(timeout)
-  }, [])
-
   const {
     data: stats,
     isLoading,
     error,
     isFetching,
     refetch,
-  } = useDocumentStats(shouldFetch)
+  } = useDocumentStats()
 
-  const showSkeleton = !shouldFetch || isLoading
+  const showSkeleton = !stats && isLoading
 
   if (showSkeleton) {
     return (
@@ -38,7 +31,7 @@ export function DocumentStats() {
     )
   }
 
-  if (error) {
+  if (error && !stats) {
     return (
       <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
         <div className="flex items-center justify-between">
@@ -74,6 +67,11 @@ export function DocumentStats() {
           <p className="text-xs text-gray-500">
             Snapshot refreshed every 30 minutes unless you update it manually.
           </p>
+          {error && (
+            <p className="text-xs text-red-600">
+              Showing cached data. Refresh to try loading the latest snapshot.
+            </p>
+          )}
         </div>
         <button
           onClick={() => refetch()}

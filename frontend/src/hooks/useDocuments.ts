@@ -33,55 +33,26 @@ export function useDocuments(
   pageSize = 50,
   statusFilter?: string
 ) {
-  return useQuery({
+  return useQuery<Document[]>({
     queryKey: documentKeys.list(page, pageSize, statusFilter),
     queryFn: () => apiClient.getDocuments(page, pageSize, statusFilter),
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 60 * 24,
+    placeholderData: (previousData) => previousData,
   })
 }
 
-const DOCUMENT_STATS_CACHE_KEY = 'retrievai:documentStats'
 const DOCUMENT_STATS_TTL = 1000 * 60 * 30 // 30 minutes
-
-function getCachedStats(): DocumentStats | undefined {
-  if (typeof window === 'undefined') return undefined
-  try {
-    const raw = window.localStorage.getItem(DOCUMENT_STATS_CACHE_KEY)
-    if (!raw) return undefined
-    const parsed = JSON.parse(raw) as { data: DocumentStats; cachedAt: number }
-    if (!parsed?.data || !parsed?.cachedAt) return undefined
-    if (Date.now() - parsed.cachedAt > DOCUMENT_STATS_TTL) return undefined
-    return parsed.data
-  } catch {
-    return undefined
-  }
-}
-
-function cacheStats(stats: DocumentStats) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(
-      DOCUMENT_STATS_CACHE_KEY,
-      JSON.stringify({ data: stats, cachedAt: Date.now() })
-    )
-  } catch {
-    // Ignore storage errors (private mode, etc.)
-  }
-}
 
 // Fetch document statistics (lazily enabled)
 export function useDocumentStats(enabled = true) {
   return useQuery<DocumentStats>({
     queryKey: documentKeys.stats(),
-    queryFn: async () => {
-      const stats = await apiClient.getDocumentStats()
-      cacheStats(stats)
-      return stats
-    },
+    queryFn: () => apiClient.getDocumentStats(),
     refetchOnWindowFocus: false,
     staleTime: DOCUMENT_STATS_TTL,
     gcTime: DOCUMENT_STATS_TTL * 2,
     enabled,
-    initialData: () => getCachedStats(),
   })
 }
 
@@ -100,10 +71,11 @@ export function useUploadStatus(fileHash: string, enabled = true) {
     queryKey: documentKeys.uploadStatus(fileHash),
     queryFn: () => apiClient.getUploadStatus(fileHash),
     enabled: enabled && !!fileHash,
-    refetchInterval: (data) => {
-      // Poll every 2 seconds while processing
-      if (!data) return 2000
-      const status = data.status
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (!status) {
+        return 2000
+      }
       if (status === 'queued' || status === 'running') {
         return 2000
       }

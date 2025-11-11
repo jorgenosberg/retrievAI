@@ -2,14 +2,18 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { apiClient, type User } from '@/lib/api'
-
-type UserPreferences = {
-  theme: 'light' | 'dark' | 'system'
-  auto_send: boolean
-  show_sources: boolean
-  default_chat_model: string
-  use_personal_api_key: boolean
-}
+import {
+  DEFAULT_USER_PREFERENCES,
+  clearStoredPreferences,
+  getPreferencesUpdatedAt,
+  getStoredPreferences,
+  setStoredPreferences,
+} from '@/lib/preferencesStorage'
+import { getChatCacheStats, clearChatSessions } from '@/lib/chatStorage'
+import { getItem, removeItem } from '@/lib/storage'
+import { QUERY_CACHE_STORAGE_KEY } from '@/lib/cacheKeys'
+import { useThemePreference } from '@/providers/ThemeProvider'
+import type { UserPreferences } from '@/types/preferences'
 
 type UserSettingsResponse = {
   preferences: UserPreferences
@@ -29,13 +33,76 @@ type GlobalKeyInfo = {
   updated_by?: number | null
 }
 
+type CacheSnapshot = {
+  querySizeBytes: number
+  queryLastUpdated: number
+  chatSessions: number
+  chatMessages: number
+  chatLastUpdated: number
+  preferencesLastUpdated: number
+}
+
+const getByteLength = (value: string) => {
+  if (typeof Blob !== 'undefined') {
+    try {
+      return new Blob([value]).size
+    } catch {
+      return value.length
+    }
+  }
+  return value.length
+}
+
+const createCacheSnapshot = (): CacheSnapshot => {
+  const queryRaw = getItem(QUERY_CACHE_STORAGE_KEY)
+  let querySizeBytes = 0
+  let queryLastUpdated = 0
+
+  if (queryRaw) {
+    querySizeBytes = getByteLength(queryRaw)
+    try {
+      const parsed = JSON.parse(queryRaw) as { timestamp?: number }
+      queryLastUpdated = parsed?.timestamp ?? 0
+    } catch {
+      queryLastUpdated = 0
+    }
+  }
+
+  const chatStats = getChatCacheStats()
+
+  return {
+    querySizeBytes,
+    queryLastUpdated,
+    chatSessions: chatStats.sessionCount,
+    chatMessages: chatStats.messageCount,
+    chatLastUpdated: chatStats.lastUpdated,
+    preferencesLastUpdated: getPreferencesUpdatedAt(),
+  }
+}
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / 1024 ** exponent
+  return `${value.toFixed(value < 10 && exponent > 0 ? 1 : 0)} ${units[exponent]}`
+}
+
+const formatTimestamp = (timestamp: number) => {
+  if (!timestamp) return 'Never'
+  return new Date(timestamp).toLocaleString()
+}
+
 export const Route = createFileRoute('/_authenticated/settings')({
   component: SettingsPage,
 })
 
 function SettingsPage() {
   const queryClient = useQueryClient()
-  const [prefForm, setPrefForm] = useState<UserPreferences | null>(null)
+  const { setThemePreference } = useThemePreference()
+  const [prefForm, setPrefForm] = useState<UserPreferences>(
+    () => getStoredPreferences() ?? DEFAULT_USER_PREFERENCES
+  )
   const [personalKeyInput, setPersonalKeyInput] = useState('')
   const [adminForm, setAdminForm] = useState<AdminSettings | null>(null)
   const [globalKeyInput, setGlobalKeyInput] = useState('')
@@ -46,6 +113,9 @@ function SettingsPage() {
     role: 'user',
     is_active: true,
   })
+  const [cacheSnapshot, setCacheSnapshot] = useState<CacheSnapshot>(() =>
+    createCacheSnapshot()
+  )
 
   const { data: currentUser } = useQuery({
     queryKey: ['current-user'],
@@ -59,8 +129,9 @@ function SettingsPage() {
   })
 
   useEffect(() => {
-    if (userSettings) {
+    if (userSettings?.preferences) {
       setPrefForm(userSettings.preferences)
+      setStoredPreferences(userSettings.preferences)
     }
   }, [userSettings])
 
@@ -87,6 +158,15 @@ function SettingsPage() {
     queryFn: () => apiClient.getUsers(),
     enabled: isAdmin,
   })
+
+  useEffect(() => {
+    setThemePreference(prefForm.theme)
+    setStoredPreferences(prefForm)
+  }, [prefForm, setThemePreference])
+
+  useEffect(() => {
+    setCacheSnapshot(createCacheSnapshot())
+  }, [])
 
   const updatePreferencesMutation = useMutation({
     mutationFn: (payload: UserPreferences) => apiClient.updateUserPreferences(payload),
@@ -156,6 +236,32 @@ function SettingsPage() {
     },
   })
 
+  const refreshCacheSnapshot = () => setCacheSnapshot(createCacheSnapshot())
+
+  const handleClearQueryCache = () => {
+    queryClient.clear()
+    removeItem(QUERY_CACHE_STORAGE_KEY)
+    refreshCacheSnapshot()
+  }
+
+  const handleClearChatCache = () => {
+    clearChatSessions()
+    refreshCacheSnapshot()
+  }
+
+  const handleClearPreferencesCache = () => {
+    clearStoredPreferences()
+    setPrefForm({ ...DEFAULT_USER_PREFERENCES })
+    setThemePreference(DEFAULT_USER_PREFERENCES.theme)
+    refreshCacheSnapshot()
+  }
+
+  const handleClearAllLocalData = () => {
+    handleClearQueryCache()
+    handleClearChatCache()
+    handleClearPreferencesCache()
+  }
+
   const canUsePersonalKey = userSettings?.personal_api_key_set ?? false
 
   const themeOptions = [
@@ -173,7 +279,6 @@ function SettingsPage() {
 
   const handlePrefSubmit = (event: FormEvent) => {
     event.preventDefault()
-    if (!prefForm) return
     updatePreferencesMutation.mutate(prefForm)
   }
 
@@ -198,7 +303,7 @@ function SettingsPage() {
             <p className="text-sm text-gray-500">These settings only apply to your account.</p>
           </div>
 
-          {loadingUserSettings || !prefForm ? (
+          {loadingUserSettings && !userSettings ? (
             <div className="space-y-4">
               {[...Array(3)].map((_, idx) => (
                 <div key={idx} className="h-12 animate-pulse rounded bg-gray-100" />
@@ -217,7 +322,10 @@ function SettingsPage() {
                         value={option.value}
                         checked={prefForm.theme === option.value}
                         onChange={(e) =>
-                          setPrefForm((prev) => prev ? { ...prev, theme: e.target.value as UserPreferences['theme'] } : prev)
+                          setPrefForm((prev) => ({
+                            ...prev,
+                            theme: e.target.value as UserPreferences['theme'],
+                          }))
                         }
                       />
                       <span className="text-sm text-gray-700">{option.label}</span>
@@ -232,7 +340,7 @@ function SettingsPage() {
                   description="Automatically send messages when pressing Enter."
                   checked={prefForm.auto_send}
                   onChange={(checked) =>
-                    setPrefForm((prev) => prev ? { ...prev, auto_send: checked } : prev)
+                    setPrefForm((prev) => ({ ...prev, auto_send: checked }))
                   }
                 />
                 <PreferenceToggle
@@ -240,7 +348,7 @@ function SettingsPage() {
                   description="Expand source citations by default after each answer."
                   checked={prefForm.show_sources}
                   onChange={(checked) =>
-                    setPrefForm((prev) => prev ? { ...prev, show_sources: checked } : prev)
+                    setPrefForm((prev) => ({ ...prev, show_sources: checked }))
                   }
                 />
                 <PreferenceToggle
@@ -249,7 +357,7 @@ function SettingsPage() {
                   checked={prefForm.use_personal_api_key && canUsePersonalKey}
                   disabled={!canUsePersonalKey}
                   onChange={(checked) =>
-                    setPrefForm((prev) => prev ? { ...prev, use_personal_api_key: checked } : prev)
+                    setPrefForm((prev) => ({ ...prev, use_personal_api_key: checked }))
                   }
                 />
               </div>
@@ -259,7 +367,10 @@ function SettingsPage() {
                 <select
                   value={prefForm.default_chat_model}
                   onChange={(e) =>
-                    setPrefForm((prev) => prev ? { ...prev, default_chat_model: e.target.value } : prev)
+                    setPrefForm((prev) => ({
+                      ...prev,
+                      default_chat_model: e.target.value,
+                    }))
                   }
                   className="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 >
@@ -557,8 +668,111 @@ function SettingsPage() {
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">User management</h2>
                   <p className="text-sm text-gray-500">Grant access, promote admins, or deactivate accounts.</p>
+          </div>
+        </div>
+
+        {/* Local cache */}
+        <div className="rounded-lg bg-white p-6 shadow">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Local cache & privacy</h2>
+              <p className="text-sm text-gray-500">
+                Data stored in your browser keeps the app snappy. You can clear any slice below at any time.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearAllLocalData}
+              className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Clear all local data
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="rounded border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Document cache</p>
+                  <p className="text-xs text-gray-500">Stats & lists cached from the API.</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleClearQueryCache}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  Clear
+                </button>
               </div>
+              <dl className="mt-3 space-y-1 text-sm text-gray-600">
+                <div className="flex items-center justify-between">
+                  <dt>Size</dt>
+                  <dd>{formatBytes(cacheSnapshot.querySizeBytes)}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt>Updated</dt>
+                  <dd>{formatTimestamp(cacheSnapshot.queryLastUpdated)}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="rounded border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Chat history</p>
+                  <p className="text-xs text-gray-500">Last 30 days saved on this device.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearChatCache}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  Clear
+                </button>
+              </div>
+              <dl className="mt-3 space-y-1 text-sm text-gray-600">
+                <div className="flex items-center justify-between">
+                  <dt>Conversations</dt>
+                  <dd>{cacheSnapshot.chatSessions}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt>Messages cached</dt>
+                  <dd>{cacheSnapshot.chatMessages}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt>Updated</dt>
+                  <dd>{formatTimestamp(cacheSnapshot.chatLastUpdated)}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="rounded border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">UI preferences</p>
+                  <p className="text-xs text-gray-500">Theme & editor toggles stored locally.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearPreferencesCache}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  Clear
+                </button>
+              </div>
+              <dl className="mt-3 space-y-1 text-sm text-gray-600">
+                <div className="flex items-center justify-between">
+                  <dt>Theme</dt>
+                  <dd className="capitalize">{prefForm.theme}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt>Updated</dt>
+                  <dd>{formatTimestamp(cacheSnapshot.preferencesLastUpdated)}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </div>
 
               {loadingUsers ? (
                 <div className="space-y-2">

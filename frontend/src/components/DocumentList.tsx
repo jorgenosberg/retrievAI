@@ -15,11 +15,12 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
   const [pageSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | ''>('')
 
-  const { data: documents, isLoading, error } = useDocuments(
-    page,
-    pageSize,
-    statusFilter || undefined
-  )
+  const {
+    data: documents = [],
+    isLoading,
+    isFetching,
+    error,
+  } = useDocuments(page, pageSize, statusFilter || undefined)
   const deleteMutation = useDeleteDocument()
 
   const handleDelete = async (id: number, filename: string) => {
@@ -74,7 +75,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
     )
   }
 
-  if (isLoading) {
+  if (isLoading && documents.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow">
         <div className="p-6 space-y-4">
@@ -94,7 +95,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
     )
   }
 
-  if (error) {
+  if (error && documents.length === 0) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <p className="text-red-800 text-sm">
@@ -104,7 +105,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
     )
   }
 
-  if (!documents || documents.length === 0) {
+  if (documents.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-12 text-center">
         <div className="flex flex-col items-center space-y-4">
@@ -163,8 +164,20 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
           <span className="text-sm text-gray-500">
             {documents.length} document{documents.length !== 1 ? 's' : ''}
           </span>
+          {isFetching && (
+            <span className="inline-flex items-center text-xs text-gray-400">
+              <span className="mr-1 h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+              Updating
+            </span>
+          )}
         </div>
       </div>
+
+      {error && documents.length > 0 && (
+        <div className="rounded border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800">
+          Showing cached results. Refresh to retry: {error.message}
+        </div>
+      )}
 
       {/* Document List */}
       <div className="bg-white rounded-lg shadow overflow-hidden">

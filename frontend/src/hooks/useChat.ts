@@ -1,15 +1,27 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { apiClient } from '@/lib/api'
 import type { ChatMessage, Source, SSEEvent } from '@/types/chat'
+import { loadChatSession, persistChatSession } from '@/lib/chatStorage'
 
 export function useChat(conversationId?: string) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const sessionId = conversationId ?? 'default'
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    loadChatSession(sessionId)
+  )
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingMessage, setStreamingMessage] = useState('')
   const [streamingSources, setStreamingSources] = useState<Source[]>([])
   const [statusMessage, setStatusMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    setMessages(loadChatSession(sessionId))
+  }, [sessionId])
+
+  useEffect(() => {
+    persistChatSession(sessionId, messages)
+  }, [messages, sessionId])
 
   const sendMessage = useCallback(
     async (message: string) => {
@@ -136,7 +148,8 @@ export function useChat(conversationId?: string) {
     setStreamingSources([])
     setStatusMessage('')
     setError(null)
-  }, [])
+    persistChatSession(sessionId, [])
+  }, [sessionId])
 
   return {
     messages,

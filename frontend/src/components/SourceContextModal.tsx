@@ -99,14 +99,16 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
     } else if (currentView === 'current') {
       return contextData.previous_chunks.length > 0
     } else {
-      return viewIndex > 0
+      // In 'next' mode, can always go back
+      return true
     }
   }
 
   const canGoNext = (): boolean => {
     if (!contextData) return false
     if (currentView === 'prev') {
-      return viewIndex > 0
+      // In 'prev' mode, can always go forward
+      return true
     } else if (currentView === 'current') {
       return contextData.next_chunks.length > 0
     } else {
@@ -118,30 +120,44 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
     if (!contextData) return
 
     if (currentView === 'prev') {
+      // Go further back in previous chunks
       setViewIndex(viewIndex + 1)
     } else if (currentView === 'current') {
+      // Move to most recent previous chunk (index 0 = closest to current)
       setCurrentView('prev')
       setViewIndex(0)
-    } else if (currentView === 'next' && viewIndex > 0) {
-      setViewIndex(viewIndex - 1)
-    } else if (currentView === 'next' && viewIndex === 0) {
-      setCurrentView('current')
-      setViewIndex(0)
+    } else if (currentView === 'next') {
+      // In next mode
+      if (viewIndex > 0) {
+        // Go back within next chunks
+        setViewIndex(viewIndex - 1)
+      } else {
+        // viewIndex is 0, go back to current
+        setCurrentView('current')
+        setViewIndex(0)
+      }
     }
   }
 
   const handleNext = () => {
     if (!contextData) return
 
-    if (currentView === 'prev' && viewIndex > 0) {
-      setViewIndex(viewIndex - 1)
-    } else if (currentView === 'prev' && viewIndex === 0) {
-      setCurrentView('current')
-      setViewIndex(0)
+    if (currentView === 'prev') {
+      // In prev mode
+      if (viewIndex > 0) {
+        // Go forward within prev chunks (toward current)
+        setViewIndex(viewIndex - 1)
+      } else {
+        // viewIndex is 0, go forward to current
+        setCurrentView('current')
+        setViewIndex(0)
+      }
     } else if (currentView === 'current') {
+      // Move to first next chunk (index 0 = closest to current)
       setCurrentView('next')
       setViewIndex(0)
     } else if (currentView === 'next') {
+      // Go further forward in next chunks
       setViewIndex(viewIndex + 1)
     }
   }
@@ -162,16 +178,22 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
   const currentChunk = getCurrentChunk()
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 dark:bg-black dark:bg-opacity-70 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-gray-200">
+        <div className="flex items-start justify-between p-6 border-b border-gray-200 dark:border-zinc-700">
           <div className="flex-1">
-            <h2 className="text-xl font-bold text-gray-900">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-zinc-100">
               {source.metadata.title || source.metadata.source}
             </h2>
             {source.metadata.page && (
-              <p className="text-sm text-gray-500 mt-1">Page {source.metadata.page}</p>
+              <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">Page {source.metadata.page}</p>
             )}
             {contextData && (
               <p className="text-sm text-primary-600 dark:text-primary-400 mt-1">{getPositionLabel()}</p>
@@ -179,7 +201,7 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors ml-4 cursor-pointer"
+            className="text-gray-400 hover:text-gray-600 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors ml-4 cursor-pointer"
             title="Close"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -219,12 +241,12 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
 
         {/* Footer with navigation */}
         {!loading && !error && contextData && (
-          <div className="border-t border-gray-200 p-4 bg-gray-50">
+          <div className="border-t border-gray-200 dark:border-zinc-700 p-4 bg-gray-50 dark:bg-zinc-800">
             <div className="flex items-center justify-between">
               <button
                 onClick={handlePrevious}
                 disabled={!canGoPrevious()}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-600 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer text-gray-900 dark:text-zinc-100"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -248,7 +270,7 @@ export function SourceContextModal({ source, onClose }: SourceContextModalProps)
               <button
                 onClick={handleNext}
                 disabled={!canGoNext()}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-600 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer text-gray-900 dark:text-zinc-100"
               >
                 <span className="font-medium">Next</span>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -19,18 +19,16 @@ export const Route = createFileRoute('/_authenticated/chat')({
 function SourceCard({ source, index, onExpand }: { source: Source; index: number; onExpand?: () => void }) {
   return (
     <div className="rounded-md border border-primary-200 bg-primary-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
-      <div className="mb-1 flex items-start justify-between">
-        <div className="flex flex-1 items-center gap-2">
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white dark:bg-primary-500">
-            {index + 1}
-          </span>
-          <span className="flex-1 truncate font-medium text-primary-900 dark:text-primary-100">
-            {source.metadata.title || source.metadata.source}
-          </span>
-        </div>
-        <div className="ml-2 flex items-center gap-2">
+      <div className="mb-1 flex items-start gap-2">
+        <span className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white dark:bg-primary-500">
+          {index + 1}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium text-primary-900 dark:text-primary-100">
+          {source.metadata.title || source.metadata.source}
+        </span>
+        <div className="flex flex-shrink-0 items-center gap-2">
           {source.metadata.page && (
-            <span className="text-xs text-primary-600 dark:text-primary-200">
+            <span className="whitespace-nowrap text-xs text-primary-600 dark:text-primary-200">
               Page {source.metadata.page}
             </span>
           )}

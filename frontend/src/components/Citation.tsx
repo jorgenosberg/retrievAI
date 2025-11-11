@@ -30,10 +30,10 @@ export function Citation({ number, source }: CitationProps) {
 
       {/* Tooltip */}
       {showTooltip && (
-        <div className="absolute z-50 bottom-full left-1/2 -tranzinc-x-1/2 mb-2 w-80 max-w-sm">
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 max-w-sm">
           <div className="bg-gray-900 dark:bg-zinc-800 text-white text-xs rounded-lg shadow-lg p-3">
             {/* Arrow pointing down */}
-            <div className="absolute top-full left-1/2 -tranzinc-x-1/2 -mt-px">
+            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
               <div className="border-8 border-transparent border-t-gray-900 dark:border-t-zinc-800"></div>
             </div>
 

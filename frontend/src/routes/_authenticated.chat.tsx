@@ -11,7 +11,7 @@ export const Route = createFileRoute('/_authenticated/chat')({
     sessionId:
       typeof search.sessionId === 'string' && search.sessionId.trim().length > 0
         ? search.sessionId
-        : generateChatSessionId(),
+        : 'default',
   }),
   component: ChatPage,
 })
@@ -139,7 +139,11 @@ function MessageUtilities({
 function ChatPage() {
   const [input, setInput] = useState('')
   const [expandedSource, setExpandedSource] = useState<Source | null>(null)
+  const [showScrollButton, setShowScrollButton] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const pendingMessageRef = useRef<string | null>(null)
   const { sessionId } = Route.useSearch()
   const navigate = Route.useNavigate()
   const {
@@ -157,12 +161,89 @@ function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingMessage])
 
+  // Autofocus input when page loads or session changes
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [sessionId])
+
+  // Auto-resize textarea as user types
+  useEffect(() => {
+    const textarea = inputRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
+    }
+  }, [input])
+
+  // Detect scroll position to show/hide scroll-to-bottom button
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
+      setShowScrollButton(!isNearBottom && (messages.length > 0 || streamingMessage))
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    handleScroll() // Check initial state
+
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [messages.length, streamingMessage])
+
+  // Clear pending message when sessionId changes (except when transitioning from default)
+  const previousSessionIdRef = useRef(sessionId)
+  useEffect(() => {
+    const previousSessionId = previousSessionIdRef.current
+    previousSessionIdRef.current = sessionId
+
+    // If we're navigating from a non-default session to another session, clear pending message
+    if (previousSessionId !== 'default' && previousSessionId !== sessionId) {
+      pendingMessageRef.current = null
+    }
+  }, [sessionId])
+
+  // Handle sending pending message after navigation from default to new session
+  useEffect(() => {
+    if (sessionId !== 'default' && messages.length === 0 && pendingMessageRef.current) {
+      const message = pendingMessageRef.current
+      pendingMessageRef.current = null
+      // Use setTimeout to avoid dependency on sendMessage
+      setTimeout(() => sendMessage(message), 0)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || isStreaming) return
 
-    await sendMessage(input)
-    setInput('')
+    // If this is the default session and the first message, create a new session
+    if (sessionId === 'default' && messages.length === 0) {
+      pendingMessageRef.current = input.trim()
+      setInput('')
+      const newSessionId = generateChatSessionId()
+      navigate({
+        to: '/chat',
+        search: { sessionId: newSessionId },
+        replace: true,
+      })
+      return
+    }
+
+    const messageToSend = input
+    setInput('') // Clear input immediately for better UX
+    await sendMessage(messageToSend)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Submit on Enter (without Shift)
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
+    }
+    // Allow Shift+Enter to add a new line (default textarea behavior)
   }
 
   const handleNewChat = () => {
@@ -173,25 +254,31 @@ function ChatPage() {
     })
   }
 
-  return (
-    <div className="flex min-h-full flex-col bg-gray-100 text-gray-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-zinc-100">Chat</h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-zinc-500">
-              Ask grounded questions about your uploaded corpus.
-            </p>
-          </div>
-          <button
-            onClick={handleNewChat}
-            className="inline-flex items-center justify-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400 cursor-pointer"
-          >
-            New Chat
-          </button>
-        </div>
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
-        <div className="space-y-4">
+  return (
+    <div className="relative flex h-full flex-col bg-gray-100 text-gray-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <div ref={messagesContainerRef} className={`flex-1 overflow-y-auto pb-0 ${messages.length === 0 && !streamingMessage ? 'p-6' : 'px-6 pt-4'}`}>
+        {messages.length === 0 && !streamingMessage && (
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-zinc-100">Chat</h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-zinc-500">
+                Ask grounded questions about your uploaded corpus.
+              </p>
+            </div>
+            <button
+              onClick={handleNewChat}
+              className="inline-flex items-center justify-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400 cursor-pointer"
+            >
+              New Chat
+            </button>
+          </div>
+        )}
+
+        <div className="space-y-4 pb-6">
           {messages.length === 0 && !streamingMessage ? (
             <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Welcome to RetrievAI</h2>
@@ -254,32 +341,49 @@ function ChatPage() {
               )}
             </>
           )}
+          <div ref={messagesEndRef} />
         </div>
-
-        <div ref={messagesEndRef} />
       </div>
 
-      {error && (
-        <div className="border-t border-danger-200 bg-danger-50 px-4 py-2 text-sm text-danger-700 dark:border-danger-500/40 dark:bg-danger-500/10 dark:text-danger-200">
-          Error: {error}
-        </div>
+      {/* Scroll to bottom button - positioned above the input area */}
+      {showScrollButton && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-24 right-6 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg transition-all hover:bg-primary-700 hover:shadow-xl dark:bg-primary-500 dark:hover:bg-primary-400 cursor-pointer"
+          title="Scroll to bottom"
+          aria-label="Scroll to bottom"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </button>
       )}
 
-      <div className="border-t border-gray-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex-shrink-0">
+        {error && (
+          <div className="border-t border-danger-200 bg-danger-50 px-4 py-2 text-sm text-danger-700 dark:border-danger-500/40 dark:bg-danger-500/10 dark:text-danger-200">
+            Error: {error}
+          </div>
+        )}
+
+        <div className="border-t border-gray-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
         <form onSubmit={handleSubmit} className="mx-auto flex max-w-4xl flex-col gap-3">
-          <div className="flex gap-2">
-            <input
-              type="text"
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Ask a question..."
               disabled={isStreaming}
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:border-primary-400 dark:focus:ring-primary-400 dark:disabled:bg-zinc-800"
+              rows={1}
+              className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:border-primary-400 dark:focus:ring-primary-400 dark:disabled:bg-zinc-800"
+              style={{ minHeight: '42px', maxHeight: '200px' }}
             />
             <button
               type="submit"
               disabled={isStreaming || !input.trim()}
-              className={`rounded-lg bg-primary-600 px-6 py-2 font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-400 dark:bg-primary-500 dark:hover:bg-primary-400 dark:disabled:bg-zinc-700 ${isStreaming ? 'cursor-progress' : 'cursor-pointer'}`}
+              className={`flex-shrink-0 rounded-lg bg-primary-600 px-6 py-2 font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-400 dark:bg-primary-500 dark:hover:bg-primary-400 dark:disabled:bg-zinc-700 ${isStreaming ? 'cursor-progress' : 'cursor-pointer'}`}
             >
               {isStreaming ? 'Streaming...' : 'Send'}
             </button>
@@ -288,6 +392,7 @@ function ChatPage() {
             Press Enter to send. Use Shift + Enter for a new line.
           </p>
         </form>
+        </div>
       </div>
 
       {expandedSource && (

@@ -75,10 +75,12 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
           session &&
           typeof session === "object" &&
           typeof session.id === "string" &&
+          typeof session.createdAt === "number" &&
           typeof session.updatedAt === "number" &&
           Array.isArray(session.messages)
         );
       })
+      .sort((a, b) => b.createdAt - a.createdAt) // Sort by creation time, newest first
       .slice(0, MAX_RECENT_CHATS);
   }, [chatSessions]);
 
@@ -115,10 +117,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     if (!confirmed) return;
     clearChatSessions();
     if (pathname.startsWith("/chat")) {
-      navigate({
-        to: "/chat",
-        search: { sessionId: "default" },
-      });
+      handleSelectSession("default");
     }
   };
 

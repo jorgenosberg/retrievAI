@@ -5,7 +5,6 @@ import {
   loadChatSession,
   persistChatSession,
   subscribeToChatSessions,
-  generateChatSessionId,
   getSessionConversationId,
 } from '@/lib/chatStorage'
 
@@ -57,7 +56,7 @@ const areMessagesEqual = (a: ChatMessage[], b: ChatMessage[]) => {
 }
 
 export function useChat(conversationId?: string) {
-  const sessionId = conversationId ?? generateChatSessionId()
+  const sessionId = conversationId ?? 'default'
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     loadChatSession(sessionId)
   )
@@ -70,8 +69,17 @@ export function useChat(conversationId?: string) {
   const [statusMessage, setStatusMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const currentSessionIdRef = useRef(sessionId)
+  const skipNextPersistRef = useRef(false)
+  const latestMessagesRef = useRef(messages)
 
   useEffect(() => {
+    latestMessagesRef.current = messages
+  }, [messages])
+
+  useEffect(() => {
+    currentSessionIdRef.current = sessionId
+    skipNextPersistRef.current = true
     setMessages(loadChatSession(sessionId))
     setSessionConversationId(getSessionConversationId(sessionId) ?? null)
   }, [sessionId])
@@ -103,6 +111,19 @@ export function useChat(conversationId?: string) {
   }, [sessionId])
 
   useEffect(() => {
+    // Skip the first run after a session switch so we don't clone the previous chat
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false
+      return
+    }
+    // Only persist real sessions with messages that belong to the active view
+    if (
+      sessionId === 'default' ||
+      messages.length === 0 ||
+      currentSessionIdRef.current !== sessionId
+    ) {
+      return
+    }
     persistChatSession(sessionId, messages, sessionConversationId)
   }, [messages, sessionId, sessionConversationId])
 
@@ -110,18 +131,42 @@ export function useChat(conversationId?: string) {
     async (message: string) => {
       if (!message.trim() || isStreaming) return
 
+      const targetSessionId = sessionId
+      let nextConversationId = sessionConversationId ?? null
+      const isViewingTarget = () => currentSessionIdRef.current === targetSessionId
+
+      let workingMessages = isViewingTarget()
+        ? [...latestMessagesRef.current]
+        : [...loadChatSession(targetSessionId)]
+
+      const persistIfBackground = () => {
+        if (!isViewingTarget()) {
+          persistChatSession(targetSessionId, workingMessages, nextConversationId)
+        }
+      }
+
+      const pushMessage = (chatMessage: ChatMessage) => {
+        workingMessages = [...workingMessages, chatMessage]
+        if (isViewingTarget()) {
+          setMessages(workingMessages)
+        }
+        persistIfBackground()
+      }
+
       // Add user message immediately
       const userMessage: ChatMessage = {
         role: 'user',
         content: message,
       }
-      setMessages((prev) => [...prev, userMessage])
+      pushMessage(userMessage)
 
-      // Reset streaming state
-      setStreamingMessage('')
-      setStreamingSources([])
-      setStatusMessage('')
-      setError(null)
+      // Reset streaming state (only for active session)
+      if (isViewingTarget()) {
+        setStreamingMessage('')
+        setStreamingSources([])
+        setStatusMessage('')
+        setError(null)
+      }
       setIsStreaming(true)
 
       // Create abort controller for this request
@@ -131,67 +176,86 @@ export function useChat(conversationId?: string) {
       let currentSources: Source[] = []
       let currentAnswer = ''
 
+      const stopStreamingForRequest = (status?: string) => {
+        if (isViewingTarget()) {
+          setStreamingMessage('')
+          setStreamingSources([])
+          setStatusMessage(status ?? '')
+        }
+        setIsStreaming(false)
+      }
+
       try {
         await apiClient.streamChat(
           message,
-          sessionConversationId ?? undefined,
+          nextConversationId ?? undefined,
           (event: SSEEvent) => {
             switch (event.type) {
               case 'start':
-                setStatusMessage('Query received...')
+                if (isViewingTarget()) {
+                  setStatusMessage('Query received...')
+                }
                 break
 
               case 'retrieving':
-                setStatusMessage(event.content.message || 'Searching documents...')
+                if (isViewingTarget()) {
+                  setStatusMessage(event.content.message || 'Searching documents...')
+                }
                 break
 
               case 'sources':
-                // Store sources locally for this request
                 currentSources = event.content.sources || []
-                setStreamingSources(currentSources)
-                // Don't show count message, just quietly store sources
-                setStatusMessage('Generating response...')
+                if (isViewingTarget()) {
+                  setStreamingSources(currentSources)
+                  setStatusMessage('Generating response...')
+                }
                 break
 
               case 'thinking':
-                setStatusMessage('Generating response...')
+                if (isViewingTarget()) {
+                  setStatusMessage('Generating response...')
+                }
                 break
 
               case 'token':
-                // Append token to streaming message
                 currentAnswer += event.content
-                setStreamingMessage((prev) => prev + event.content)
-                setStatusMessage('') // Clear status when streaming starts
+                if (isViewingTarget()) {
+                  setStreamingMessage((prev) => prev + event.content)
+                  setStatusMessage('')
+                }
                 break
 
               case 'done': {
-                // Finalize the assistant message using the locally tracked values
                 const assistantMessage: ChatMessage = {
                   role: 'assistant',
                   content: event.content.answer || currentAnswer,
                   sources: currentSources,
                 }
-                setMessages((prev) => [...prev, assistantMessage])
-                setStreamingMessage('')
-                setStreamingSources([])
-                setStatusMessage('Response complete')
+                pushMessage(assistantMessage)
+                stopStreamingForRequest('Response complete')
                 break
               }
 
               case 'saved': {
-                // Persist conversation metadata for this session
                 const savedConversationId = event.content?.conversation_id
                 if (typeof savedConversationId === 'string') {
-                  setSessionConversationId((prev) =>
-                    prev === savedConversationId ? prev : savedConversationId
-                  )
+                  nextConversationId = savedConversationId
+                  if (isViewingTarget()) {
+                    setSessionConversationId((prev) =>
+                      prev === savedConversationId ? prev : savedConversationId
+                    )
+                  } else {
+                    persistChatSession(targetSessionId, workingMessages, nextConversationId)
+                  }
                 }
                 break
               }
 
               case 'error':
-                setError(event.content.message || 'An error occurred')
-                setStatusMessage('')
+                if (isViewingTarget()) {
+                  setError(event.content.message || 'An error occurred')
+                  setStatusMessage('')
+                }
                 break
 
               default:
@@ -200,26 +264,28 @@ export function useChat(conversationId?: string) {
           },
           (error: Error) => {
             console.error('Streaming error:', error)
-            setError(error.message || 'Failed to stream response')
+            if (isViewingTarget()) {
+              setError(error.message || 'Failed to stream response')
+              setStreamingMessage('')
+              setStatusMessage('')
+            }
             setIsStreaming(false)
-            setStreamingMessage('')
-            setStatusMessage('')
           },
           () => {
-            // Streaming complete
-            setIsStreaming(false)
-            setStatusMessage('')
+            stopStreamingForRequest('')
           }
         )
       } catch (err) {
         console.error('Error sending message:', err)
-        setError(err instanceof Error ? err.message : 'Failed to send message')
+        if (isViewingTarget()) {
+          setError(err instanceof Error ? err.message : 'Failed to send message')
+          setStreamingMessage('')
+          setStatusMessage('')
+        }
         setIsStreaming(false)
-        setStreamingMessage('')
-        setStatusMessage('')
       }
     },
-    [isStreaming, sessionId]
+    [isStreaming, sessionConversationId, sessionId]
   )
 
   const stopStreaming = useCallback(() => {

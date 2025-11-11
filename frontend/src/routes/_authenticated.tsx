@@ -35,7 +35,7 @@ export const Route = createFileRoute('/_authenticated')({
     // No cached user, validate with backend
     try {
       await ensureCurrentUser(() => apiClient.getCurrentUser())
-    } catch (error) {
+    } catch (_error) {
       // If authentication fails, clear everything and redirect
       resetAuthCache()
       apiClient.clearTokens()

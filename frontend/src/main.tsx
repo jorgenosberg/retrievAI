@@ -1,13 +1,13 @@
-import { StrictMode } from 'react'
-import ReactDOM from 'react-dom/client'
-import { RouterProvider, createRouter } from '@tanstack/react-router'
-import { QueryClient } from '@tanstack/react-query'
-import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
-import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
-import { ThemeProvider } from '@/providers/ThemeProvider'
-import { QUERY_CACHE_STORAGE_KEY } from '@/lib/cacheKeys'
-import { routeTree } from './routeTree.gen'
-import './index.css'
+import { StrictMode } from "react";
+import ReactDOM from "react-dom/client";
+import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { QueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { ThemeProvider } from "@/providers/ThemeProvider";
+import { QUERY_CACHE_STORAGE_KEY } from "@/lib/cacheKeys";
+import { routeTree } from "./routeTree.gen";
+import "./index.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,10 +17,10 @@ const queryClient = new QueryClient({
       retry: 1,
     },
   },
-})
+});
 
-const CACHE_VERSION = 'v1'
-const isBrowser = typeof window !== 'undefined'
+const CACHE_VERSION = "v1";
+const isBrowser = typeof window !== "undefined";
 
 const persister = isBrowser
   ? createSyncStoragePersister({
@@ -28,25 +28,25 @@ const persister = isBrowser
       key: QUERY_CACHE_STORAGE_KEY,
       throttleTime: 1000,
     })
-  : undefined
+  : undefined;
 
 const router = createRouter({
   routeTree,
   context: {
     queryClient,
   },
-  defaultPreload: 'intent',
-})
+  defaultPreload: "intent",
+});
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface Register {
-    router: typeof router
+    router: typeof router;
   }
 }
 
-const rootElement = document.getElementById('root')!
+const rootElement = document.getElementById("root")!;
 if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement)
+  const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
       <PersistQueryClientProvider
@@ -61,6 +61,6 @@ if (!rootElement.innerHTML) {
           <RouterProvider router={router} />
         </ThemeProvider>
       </PersistQueryClientProvider>
-    </StrictMode>,
-  )
+    </StrictMode>
+  );
 }

@@ -34,7 +34,9 @@
 @layer base {
   :root {
     color-scheme: light;
-    font-feature-settings: 'ss01' on, 'cv02' on;
+    font-feature-settings:
+      "ss01" on,
+      "cv02" on;
     background-color: #f8fafc;
   }
 
@@ -44,10 +46,18 @@
 
   body {
     min-height: 100vh;
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
     background-color: #fafafa;
     color: #18181b;
-    transition: background-color 150ms ease, color 150ms ease;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
   }
 
   .dark body {

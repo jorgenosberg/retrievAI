@@ -2,67 +2,70 @@
  * Document list component with pagination and filtering
  */
 
-import { useState } from 'react'
-import { useDocuments, useDeleteDocument } from '@/hooks/useDocuments'
-import { DocumentStatus, type Document } from '@/types/document'
+import { useState } from "react";
+import { useDocuments, useDeleteDocument } from "@/hooks/useDocuments";
+import { DocumentStatus, type Document } from "@/types/document";
 
 interface DocumentListProps {
-  onDocumentClick?: (document: Document) => void
+  onDocumentClick?: (document: Document) => void;
 }
 
 export function DocumentList({ onDocumentClick }: DocumentListProps) {
-  const [page, setPage] = useState(1)
-  const [pageSize] = useState(50)
-  const [statusFilter, setStatusFilter] = useState<DocumentStatus | ''>('')
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(50);
+  const [statusFilter, setStatusFilter] = useState<DocumentStatus | "">("");
 
   const {
     data: documents = [],
     isLoading,
     isFetching,
     error,
-  } = useDocuments(page, pageSize, statusFilter || undefined)
-  const deleteMutation = useDeleteDocument()
+  } = useDocuments(page, pageSize, statusFilter || undefined);
+  const deleteMutation = useDeleteDocument();
 
   const handleDelete = async (id: number, filename: string) => {
     if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
-      return
+      return;
     }
 
     try {
-      await deleteMutation.mutateAsync(id)
+      await deleteMutation.mutateAsync(id);
     } catch (error: any) {
       alert(
         `Failed to delete document: ${
           error.response?.data?.detail || error.message
         }`
-      )
+      );
     }
-  }
+  };
 
   const formatDate = (dateString: string): string => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   const formatFileSize = (bytes: number | null): string => {
-    if (!bytes) return 'Unknown'
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+    if (!bytes) return "Unknown";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const getStatusBadge = (status: DocumentStatus) => {
     const styles = {
-      [DocumentStatus.COMPLETED]: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400',
-      [DocumentStatus.PROCESSING]: 'bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-400',
-      [DocumentStatus.FAILED]: 'bg-danger-100 dark:bg-danger-900/30 text-danger-800 dark:text-danger-400',
-    }
+      [DocumentStatus.COMPLETED]:
+        "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400",
+      [DocumentStatus.PROCESSING]:
+        "bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-400",
+      [DocumentStatus.FAILED]:
+        "bg-danger-100 dark:bg-danger-900/30 text-danger-800 dark:text-danger-400",
+    };
 
     return (
       <span
@@ -72,8 +75,8 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
       >
         {status}
       </span>
-    )
-  }
+    );
+  };
 
   if (isLoading && documents.length === 0) {
     return (
@@ -92,7 +95,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
           ))}
         </div>
       </div>
-    )
+    );
   }
 
   if (error && documents.length === 0) {
@@ -102,7 +105,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
           Failed to load documents: {error.message}
         </p>
       </div>
-    )
+    );
   }
 
   if (documents.length === 0) {
@@ -134,7 +137,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -148,8 +151,8 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
           <select
             value={statusFilter}
             onChange={(e) => {
-              setStatusFilter(e.target.value as DocumentStatus | '')
-              setPage(1)
+              setStatusFilter(e.target.value as DocumentStatus | "");
+              setPage(1);
             }}
             className="rounded-md border-gray-300 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:focus:border-primary-400 dark:focus:ring-primary-400 text-sm"
           >
@@ -162,7 +165,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
           <div className="flex-1"></div>
 
           <span className="text-sm text-gray-500 dark:text-zinc-400">
-            {documents.length} document{documents.length !== 1 ? 's' : ''}
+            {documents.length} document{documents.length !== 1 ? "s" : ""}
           </span>
           {isFetching && (
             <span className="inline-flex items-center text-xs text-gray-400 dark:text-zinc-500">
@@ -189,7 +192,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
             >
               <div className="flex items-center space-x-4">
                 {/* File Icon */}
-                <div className="flex-shrink-0">
+                <div className="shrink-0">
                   <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
                     <svg
                       className="w-6 h-6 text-primary-600 dark:text-primary-400"
@@ -233,7 +236,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
                       <button
                         onClick={() => handleDelete(doc.id, doc.filename)}
                         disabled={deleteMutation.isPending}
-                        className={`text-gray-400 hover:text-danger-600 dark:hover:text-danger-400 disabled:opacity-50 ${deleteMutation.isPending ? 'cursor-progress' : 'cursor-pointer'} disabled:cursor-not-allowed`}
+                        className={`text-gray-400 hover:text-danger-600 dark:hover:text-danger-400 disabled:opacity-50 ${deleteMutation.isPending ? "cursor-progress" : "cursor-pointer"} disabled:cursor-not-allowed`}
                         title="Delete document"
                       >
                         <svg
@@ -290,5 +293,5 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -51,6 +51,11 @@ jobs:
           # Install sshpass
           sudo apt-get update
           sudo apt-get install -y sshpass
+          
+          # Trim whitespace/newlines from secrets to prevent issues
+          POSTGRES_PASSWORD=$(echo "${{ secrets.POSTGRES_PASSWORD }}" | xargs)
+          OPENAI_API_KEY=$(echo "${{ secrets.OPENAI_API_KEY }}" | xargs)
+          SECRET_KEY=$(echo "${{ secrets.SECRET_KEY }}" | xargs)
 
           # Configure SSH ProxyJump
           mkdir -p ~/.ssh
@@ -77,6 +82,10 @@ jobs:
           
           # Export SSHPASS for sshpass to use
           export SSHPASS=$JUMP_HOST_PASSWORD
+          
+          # URL-encode Postgres password for connection string
+          POSTGRES_PASSWORD_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$POSTGRES_PASSWORD'''))")
+          
           chmod 600 ~/.ssh/config
           
           echo "Deploying to target ($SSH_HOST) via jump ($SSH_PROXY_HOST)..."
@@ -115,7 +124,7 @@ jobs:
           # Database
           POSTGRES_USER=retrievai
           POSTGRES_DB=retrievai
-          DATABASE_URL="postgresql+asyncpg://retrievai:$POSTGRES_PASSWORD@postgres:5432/retrievai"
+          DATABASE_URL="postgresql+asyncpg://retrievai:$POSTGRES_PASSWORD_ENCODED@postgres:5432/retrievai"
           
           # Redis
           REDIS_URL=redis://redis:6379/0
@@ -156,6 +165,7 @@ jobs:
           echo "Starting services..."
           
           # Reset DB if requested
+          echo "RESET_DB flag is: $RESET_DB"
           if [ "$RESET_DB" = "true" ]; then
             echo "Resetting database volume..."
             docker compose -f docker-compose.prod.yml down -v
@@ -189,8 +199,10 @@ jobs:
           ssh target \
             "OPENAI_API_KEY='$OPENAI_API_KEY' \
              POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
+             POSTGRES_PASSWORD_ENCODED='$POSTGRES_PASSWORD_ENCODED' \
              SECRET_KEY='$SECRET_KEY' \
              DEPLOY_PATH='$DEPLOY_PATH' \
              DOMAIN_NAME='$DOMAIN_NAME' \
              RESET_DB='${{ inputs.reset_db }}' \
              bash -s" < deploy_script.sh
+```

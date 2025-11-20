@@ -102,14 +102,14 @@ jobs:
           DEBUG=false
           
           # Secrets
-          OPENAI_API_KEY=$OPENAI_API_KEY
-          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-          SECRET_KEY=$SECRET_KEY
+          OPENAI_API_KEY="$OPENAI_API_KEY"
+          POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
+          SECRET_KEY="$SECRET_KEY"
           
           # Database
           POSTGRES_USER=retrievai
           POSTGRES_DB=retrievai
-          DATABASE_URL=postgresql+asyncpg://retrievai:$POSTGRES_PASSWORD@postgres:5432/retrievai
+          DATABASE_URL="postgresql+asyncpg://retrievai:$POSTGRES_PASSWORD@postgres:5432/retrievai"
           
           # Redis
           REDIS_URL=redis://redis:6379/0
@@ -132,6 +132,9 @@ jobs:
             echo "Updating NGINX config..."
             # Substitute DOMAIN_NAME in nginx.conf
             sed -i "s/\${DOMAIN_NAME}/$DOMAIN_NAME/g" nginx.conf
+            
+            # Remove all existing sites to prevent conflicts
+            sudo rm -f /etc/nginx/sites-enabled/*
             
             sudo cp nginx.conf /etc/nginx/sites-available/retrievai
             sudo ln -sf /etc/nginx/sites-available/retrievai /etc/nginx/sites-enabled/

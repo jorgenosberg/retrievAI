@@ -34,6 +34,8 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PROXY_HOST: ${{ secrets.SSH_PROXY_HOST }}
+          SSH_PROXY_USER: ${{ secrets.SSH_PROXY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           # Secrets to be injected into .env
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -42,7 +44,23 @@ jobs:
           DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
           # Optional: Add other secrets here
         run: |
-          echo "Deploying to $SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          # Configure SSH ProxyJump
+          mkdir -p ~/.ssh
+          cat << EOF > ~/.ssh/config
+          Host jump
+            HostName $SSH_PROXY_HOST
+            User $SSH_PROXY_USER
+            StrictHostKeyChecking no
+          
+          Host target
+            HostName $SSH_HOST
+            User $SSH_USER
+            ProxyJump jump
+            StrictHostKeyChecking no
+          EOF
+          chmod 600 ~/.ssh/config
+          
+          echo "Deploying to target ($SSH_HOST) via jump ($SSH_PROXY_HOST)..."
           
           # Create deployment script
           cat << 'EOF' > deploy_script.sh
@@ -92,9 +110,7 @@ jobs:
           if [ -f nginx.conf ]; then
             echo "Updating NGINX config..."
             # Substitute DOMAIN_NAME in nginx.conf
-            # We use a temp file to avoid issues with sed/envsubst in place
-            export DOMAIN_NAME="$DOMAIN_NAME"
-            envsubst '${DOMAIN_NAME}' < nginx.conf > nginx.conf.tmp && mv nginx.conf.tmp nginx.conf
+            sed -i "s/\${DOMAIN_NAME}/$DOMAIN_NAME/g" nginx.conf
             
             sudo cp nginx.conf /etc/nginx/sites-available/retrievai
             sudo ln -sf /etc/nginx/sites-available/retrievai /etc/nginx/sites-enabled/
@@ -122,7 +138,9 @@ jobs:
           
           # Execute script on VM
           # We pass the secrets as env vars to the ssh command so they are available in the script
-          ssh $SSH_USER@$SSH_HOST \
+          # Execute script on VM
+          # We connect to 'target' which uses the ~/.ssh/config we created above
+          ssh target \
             "OPENAI_API_KEY='$OPENAI_API_KEY' \
              POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
              SECRET_KEY='$SECRET_KEY' \

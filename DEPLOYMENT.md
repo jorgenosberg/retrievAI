@@ -81,9 +81,11 @@ Required secrets for the deployment workflow:
 
 | Secret Name | Description |
 |-------------|-------------|
-| `SSH_HOST` | IP address of your VM |
-| `SSH_USER` | SSH username (e.g., `ubuntu`) |
-| `SSH_KEY` | Private SSH key for the VM |
+| `SSH_HOST` | IP/IPv6 of your VM (e.g., `2001:700:2:8200::2232`) |
+| `SSH_USER` | VM username (e.g., `ubuntu`) |
+| `SSH_PROXY_HOST` | Jump host hostname (e.g., `login.uio.no`) |
+| `SSH_PROXY_USER` | Jump host username (e.g., `jorgenao`) |
+| `SSH_KEY` | Private SSH key (used for BOTH jump and target) |
 | `OPENAI_API_KEY` | Your OpenAI API Key |
 | `POSTGRES_PASSWORD` | Secure password for the database |
 | `SECRET_KEY` | Secure random string for the app |

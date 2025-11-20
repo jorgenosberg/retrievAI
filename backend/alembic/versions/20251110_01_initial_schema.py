@@ -13,13 +13,15 @@ depends_on = None
 
 
 def upgrade() -> None:
-    userrole = sa.Enum("user", "admin", name="userrole")
-    documentstatus = sa.Enum("processing", "completed", "failed", name="documentstatus")
-    taskstatus = sa.Enum("pending", "running", "completed", "failed", name="taskstatus")
+    # Define Enums with create_type=False to prevent auto-creation in create_table
+    userrole = sa.Enum("user", "admin", name="userrole", create_type=False)
+    documentstatus = sa.Enum("processing", "completed", "failed", name="documentstatus", create_type=False)
+    taskstatus = sa.Enum("pending", "running", "completed", "failed", name="taskstatus", create_type=False)
 
-    userrole.create(op.get_bind(), checkfirst=True)
-    documentstatus.create(op.get_bind(), checkfirst=True)
-    taskstatus.create(op.get_bind(), checkfirst=True)
+    # Create Enums safely using raw SQL
+    op.execute("DO $$ BEGIN CREATE TYPE userrole AS ENUM ('user', 'admin'); EXCEPTION WHEN duplicate_object THEN null; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE documentstatus AS ENUM ('processing', 'completed', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE taskstatus AS ENUM ('pending', 'running', 'completed', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;")
 
     op.create_table(
         "users",

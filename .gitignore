@@ -185,3 +185,5 @@ MODEL_PROMPT.md
 MODEL_PROMPT.txt
 .cursor/
 .cursor/**
+
+*.sql

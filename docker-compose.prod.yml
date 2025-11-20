@@ -7,7 +7,6 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  chroma_data:
   upload_data:
 
 services:
@@ -17,7 +16,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-retrievai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-retrievai}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -52,7 +51,8 @@ services:
       IS_PERSISTENT: "TRUE"
       ANONYMIZED_TELEMETRY: "FALSE"
     volumes:
-      - chroma_data:/chroma/chroma
+      # Mount the existing collection from the host
+      - ${CHROMA_DB_PATH:-/srv/retrievai-data/chromadb}:/chroma/chroma
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
       interval: 30s
@@ -69,16 +69,18 @@ services:
     container_name: retrievai-backend
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - .env
     environment:
       ENVIRONMENT: production
       DEBUG: "false"
       UVICORN_RELOAD: "0"
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://retrievai:change-me@postgres:5432/retrievai}
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CHROMA_HOST: chromadb
       CHROMA_PORT: 8000
+      SECRET_KEY: ${SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - upload_data:/app/data
     depends_on:
@@ -101,16 +103,18 @@ services:
     container_name: retrievai-worker
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - .env
     environment:
       ENVIRONMENT: production
       DEBUG: "false"
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://retrievai:change-me@postgres:5432/retrievai}
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CHROMA_HOST: chromadb
       CHROMA_PORT: 8000
       WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-4}
       WORKER_JOB_TIMEOUT: ${WORKER_JOB_TIMEOUT:-1800}
+      SECRET_KEY: ${SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - upload_data:/app/data
     depends_on:
@@ -132,7 +136,7 @@ services:
     container_name: retrievai-frontend
     restart: unless-stopped
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://backend:8000}
+      VITE_API_URL: ${VITE_API_URL:-/api}
     depends_on:
       backend:
         condition: service_started
@@ -140,3 +144,4 @@ services:
       - retrievai
     ports:
       - "80:80"
+

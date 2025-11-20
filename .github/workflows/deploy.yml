@@ -79,12 +79,20 @@ jobs:
           cat << 'EOF' > deploy_script.sh
           set -e
           
-          # Navigate to deployment directory
-          cd "$DEPLOY_PATH"
-          
-          # Pull latest code
-          git fetch origin main
-          git reset --hard origin/main
+          # Navigate to deployment directory or clone if it doesn't exist
+          if [ ! -d "$DEPLOY_PATH/.git" ]; then
+            echo "Repository not found in $DEPLOY_PATH. Cloning..."
+            # Ensure parent directory exists (requires permissions)
+            mkdir -p "$DEPLOY_PATH"
+            # Clone the repository
+            git clone https://github.com/${{ github.repository }}.git "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+          else
+            cd "$DEPLOY_PATH"
+            # Pull latest code
+            git fetch origin main
+            git reset --hard origin/main
+          fi
           
           # Create/Update .env file
           echo "Creating .env file..."

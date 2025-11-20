@@ -40,7 +40,12 @@ jobs:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
           # Optional: Add other secrets here
+          JUMP_HOST_PASSWORD: ${{ secrets.JUMP_HOST_PASSWORD }}
         run: |
+          # Install sshpass
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
           # Configure SSH ProxyJump
           mkdir -p ~/.ssh
           cat << EOF > ~/.ssh/config
@@ -52,9 +57,12 @@ jobs:
           Host target
             HostName $SSH_HOST
             User $SSH_USER
-            ProxyJump jump
+            ProxyCommand sshpass -e ssh -W %h:%p -o StrictHostKeyChecking=no $SSH_PROXY_USER@$SSH_PROXY_HOST
             StrictHostKeyChecking no
           EOF
+          
+          # Export SSHPASS for sshpass to use
+          export SSHPASS=$JUMP_HOST_PASSWORD
           chmod 600 ~/.ssh/config
           
           echo "Deploying to target ($SSH_HOST) via jump ($SSH_PROXY_HOST)..."

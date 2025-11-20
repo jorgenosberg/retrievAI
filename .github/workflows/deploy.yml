@@ -53,9 +53,9 @@ jobs:
           sudo apt-get install -y sshpass
           
           # Trim whitespace/newlines from secrets to prevent issues
-          POSTGRES_PASSWORD=$(echo "${{ secrets.POSTGRES_PASSWORD }}" | xargs)
-          OPENAI_API_KEY=$(echo "${{ secrets.OPENAI_API_KEY }}" | xargs)
-          SECRET_KEY=$(echo "${{ secrets.SECRET_KEY }}" | xargs)
+          POSTGRES_PASSWORD=$(echo "$POSTGRES_PASSWORD" | xargs)
+          OPENAI_API_KEY=$(echo "$OPENAI_API_KEY" | xargs)
+          SECRET_KEY=$(echo "$SECRET_KEY" | xargs)
 
           # Configure SSH ProxyJump
           mkdir -p ~/.ssh
@@ -205,4 +205,3 @@ jobs:
              DOMAIN_NAME='$DOMAIN_NAME' \
              RESET_DB='${{ inputs.reset_db }}' \
              bash -s" < deploy_script.sh
-```

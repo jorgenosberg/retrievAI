@@ -1,0 +1,286 @@
+import { useState, useEffect } from 'react'
+import { apiClient } from '@/lib/api'
+import type { Source } from '@/types/chat'
+
+interface ChunkData {
+  content: string
+  metadata: {
+    source: string
+    page?: number
+    file_hash?: string
+    title?: string
+  }
+}
+
+interface ChunkContextData {
+  current_chunk: ChunkData
+  previous_chunks: ChunkData[]
+  next_chunks: ChunkData[]
+  total_chunks: number
+  current_index: number
+}
+
+interface SourceContextModalProps {
+  source: Source
+  onClose: () => void
+}
+
+export function SourceContextModal({ source, onClose }: SourceContextModalProps) {
+  const [contextData, setContextData] = useState<ChunkContextData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [currentView, setCurrentView] = useState<'current' | 'prev' | 'next'>('current')
+  const [viewIndex, setViewIndex] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      if (!cancelled) {
+        await loadContext()
+      }
+    }
+
+    load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const loadContext = async () => {
+    if (!source.metadata.file_hash) {
+      setError('No file hash available for this source')
+      setLoading(false)
+      return
+    }
+
+    console.log('Loading context for source:', {
+      file_hash: source.metadata.file_hash,
+      content_preview: source.content.substring(0, 100),
+      metadata: source.metadata
+    })
+
+    try {
+      setLoading(true)
+      const data = await apiClient.getChunkContext(
+        source.metadata.file_hash,
+        source.content,
+        2 // Get 2 chunks before and after
+      )
+      setContextData(data)
+      setError(null)
+    } catch (err) {
+      console.error('Error loading chunk context:', err)
+      console.error('Source data:', source)
+      setError(err instanceof Error ? err.message : 'Failed to load context')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getCurrentChunk = (): ChunkData | null => {
+    if (!contextData) return null
+
+    if (currentView === 'current') {
+      return contextData.current_chunk
+    } else if (currentView === 'prev') {
+      return contextData.previous_chunks[viewIndex] || null
+    } else if (currentView === 'next') {
+      return contextData.next_chunks[viewIndex] || null
+    }
+    return null
+  }
+
+  const canGoPrevious = (): boolean => {
+    if (!contextData) return false
+    if (currentView === 'prev') {
+      return viewIndex < contextData.previous_chunks.length - 1
+    } else if (currentView === 'current') {
+      return contextData.previous_chunks.length > 0
+    } else {
+      // In 'next' mode, can always go back
+      return true
+    }
+  }
+
+  const canGoNext = (): boolean => {
+    if (!contextData) return false
+    if (currentView === 'prev') {
+      // In 'prev' mode, can always go forward
+      return true
+    } else if (currentView === 'current') {
+      return contextData.next_chunks.length > 0
+    } else {
+      return viewIndex < contextData.next_chunks.length - 1
+    }
+  }
+
+  const handlePrevious = () => {
+    if (!contextData) return
+
+    if (currentView === 'prev') {
+      // Go further back in previous chunks
+      setViewIndex(viewIndex + 1)
+    } else if (currentView === 'current') {
+      // Move to most recent previous chunk (index 0 = closest to current)
+      setCurrentView('prev')
+      setViewIndex(0)
+    } else if (currentView === 'next') {
+      // In next mode
+      if (viewIndex > 0) {
+        // Go back within next chunks
+        setViewIndex(viewIndex - 1)
+      } else {
+        // viewIndex is 0, go back to current
+        setCurrentView('current')
+        setViewIndex(0)
+      }
+    }
+  }
+
+  const handleNext = () => {
+    if (!contextData) return
+
+    if (currentView === 'prev') {
+      // In prev mode
+      if (viewIndex > 0) {
+        // Go forward within prev chunks (toward current)
+        setViewIndex(viewIndex - 1)
+      } else {
+        // viewIndex is 0, go forward to current
+        setCurrentView('current')
+        setViewIndex(0)
+      }
+    } else if (currentView === 'current') {
+      // Move to first next chunk (index 0 = closest to current)
+      setCurrentView('next')
+      setViewIndex(0)
+    } else if (currentView === 'next') {
+      // Go further forward in next chunks
+      setViewIndex(viewIndex + 1)
+    }
+  }
+
+  const getPositionLabel = (): string => {
+    if (!contextData) return ''
+
+    let absoluteIndex = contextData.current_index
+    if (currentView === 'prev') {
+      absoluteIndex -= (viewIndex + 1)
+    } else if (currentView === 'next') {
+      absoluteIndex += (viewIndex + 1)
+    }
+
+    return `Chunk ${absoluteIndex + 1} of ${contextData.total_chunks}`
+  }
+
+  const currentChunk = getCurrentChunk()
+
+  return (
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 dark:bg-black dark:bg-opacity-70 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-6 border-b border-gray-200 dark:border-zinc-700">
+          <div className="flex-1">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-zinc-100">
+              {source.metadata.title || source.metadata.source}
+            </h2>
+            {source.metadata.page && (
+              <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">Page {source.metadata.page}</p>
+            )}
+            {contextData && (
+              <p className="text-sm text-primary-600 dark:text-primary-400 mt-1">{getPositionLabel()}</p>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors ml-4 cursor-pointer"
+            title="Close"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <svg className="animate-spin h-8 w-8 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg p-4 text-danger-700 dark:text-danger-300">
+              <p className="font-semibold">Error loading context</p>
+              <p className="text-sm mt-1">{error}</p>
+            </div>
+          )}
+
+          {!loading && !error && currentChunk && (
+            <div className="prose prose-sm max-w-none">
+              <div className={`p-4 rounded-lg ${currentView === 'current' ? 'bg-primary-50 dark:bg-primary-900/20 border-2 border-primary-300 dark:border-primary-700' : 'bg-gray-50 dark:bg-zinc-800'}`}>
+                <p className="whitespace-pre-wrap leading-relaxed text-gray-800 dark:text-zinc-200">
+                  {currentChunk.content}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer with navigation */}
+        {!loading && !error && contextData && (
+          <div className="border-t border-gray-200 dark:border-zinc-700 p-4 bg-gray-50 dark:bg-zinc-800">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handlePrevious}
+                disabled={!canGoPrevious()}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-600 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer text-gray-900 dark:text-zinc-100"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                <span className="font-medium">Previous</span>
+              </button>
+
+              <div className="text-sm text-gray-600 dark:text-zinc-300">
+                {currentView === 'current' && (
+                  <span className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300 rounded-full font-medium">
+                    Current Chunk
+                  </span>
+                )}
+                {currentView !== 'current' && (
+                  <span className="text-gray-500 dark:text-zinc-400">
+                    {currentView === 'prev' ? 'Before' : 'After'} current chunk
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={handleNext}
+                disabled={!canGoNext()}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-600 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer text-gray-900 dark:text-zinc-100"
+              >
+                <span className="font-medium">Next</span>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,147 @@
+version: "3.9"
+
+networks:
+  retrievai:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  upload_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: retrievai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-retrievai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-retrievai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-retrievai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - retrievai
+
+  redis:
+    image: redis:7-alpine
+    container_name: retrievai-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "100", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - retrievai
+
+  chromadb:
+    image: chromadb/chroma:0.4.24
+    container_name: retrievai-chromadb
+    restart: unless-stopped
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      # Mount the existing collection from the host
+      - ${CHROMA_DB_PATH:-/srv/retrievai-data/chromadb}:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - retrievai
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: retrievai-backend:latest
+    container_name: retrievai-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      UVICORN_RELOAD: "0"
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+      SECRET_KEY: ${SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - upload_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    networks:
+      - retrievai
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: retrievai-worker:latest
+    container_name: retrievai-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+      WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-4}
+      WORKER_JOB_TIMEOUT: ${WORKER_JOB_TIMEOUT:-1800}
+      SECRET_KEY: ${SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - upload_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    command: uv run --no-dev arq app.workers.tasks.WorkerSettings
+    networks:
+      - retrievai
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: retrievai-frontend:latest
+    container_name: retrievai-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-/api}
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - retrievai
+    ports:
+      - "80:80"
+

@@ -26,11 +26,11 @@ def _create_enum_if_needed(name: str, values: list[str]) -> None:
 
 def upgrade() -> None:
     # Define Enums with create_type=False to prevent auto-creation in create_table
-    userrole = sa.Enum("user", "admin", name="userrole", create_type=False)
-    documentstatus = sa.Enum(
+    userrole = postgresql.ENUM("user", "admin", name="userrole", create_type=False)
+    documentstatus = postgresql.ENUM(
         "processing", "completed", "failed", name="documentstatus", create_type=False
     )
-    taskstatus = sa.Enum(
+    taskstatus = postgresql.ENUM(
         "pending", "running", "completed", "failed", name="taskstatus", create_type=False
     )
 
@@ -192,9 +192,9 @@ def downgrade() -> None:
     op.drop_index("ix_users_email", table_name="users")
     op.drop_table("users")
 
-    taskstatus = sa.Enum("pending", "running", "completed", "failed", name="taskstatus")
-    documentstatus = sa.Enum("processing", "completed", "failed", name="documentstatus")
-    userrole = sa.Enum("user", "admin", name="userrole")
+    taskstatus = postgresql.ENUM("pending", "running", "completed", "failed", name="taskstatus")
+    documentstatus = postgresql.ENUM("processing", "completed", "failed", name="documentstatus")
+    userrole = postgresql.ENUM("user", "admin", name="userrole")
 
     taskstatus.drop(op.get_bind(), checkfirst=True)
     documentstatus.drop(op.get_bind(), checkfirst=True)

@@ -44,7 +44,7 @@ services:
       - retrievai
 
   chromadb:
-    image: chromadb/chroma:0.4.24
+    image: chromadb/chroma:0.5.18
     container_name: retrievai-chromadb
     restart: unless-stopped
     environment:

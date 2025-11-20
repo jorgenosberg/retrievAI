@@ -36,12 +36,12 @@ services:
 
   # ChromaDB vector database
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.5.18
     container_name: retrievai-chromadb
     ports:
       - "8001:8000"
     volumes:
-      - chroma_data:/chroma/chroma
+      - ./.retrievai/db:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE

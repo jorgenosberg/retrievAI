@@ -141,9 +141,18 @@ jobs:
             sudo nginx -t && sudo systemctl reload nginx || echo "NGINX reload failed, check config"
           fi
           
+          # Create ChromaDB data directory
+          echo "Creating ChromaDB data directory..."
+          sudo mkdir -p /srv/retrievai-data/chromadb
+          sudo chmod -R 777 /srv/retrievai-data/chromadb
+          
           # Deploy with Docker Compose
           echo "Starting services..."
-          docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+          if ! docker compose -f docker-compose.prod.yml up -d --build --remove-orphans; then
+            echo "Deployment failed. Printing ChromaDB logs..."
+            docker compose -f docker-compose.prod.yml logs chromadb
+            exit 1
+          fi
           
           # Wait for DB
           echo "Waiting for database..."

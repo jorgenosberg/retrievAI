@@ -3,6 +3,7 @@
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import ProgrammingError
 
 
 # revision identifiers, used by Alembic.
@@ -12,16 +13,30 @@ branch_labels = None
 depends_on = None
 
 
+def _create_enum_if_needed(name: str, values: list[str]) -> None:
+    enum_values = ", ".join(f"'{value}'" for value in values)
+    statement = sa.text(f"CREATE TYPE {name} AS ENUM ({enum_values})")
+
+    try:
+        op.execute(statement)
+    except ProgrammingError as exc:  # Postgres duplicate enum type
+        if getattr(exc.orig, "sqlstate", None) != "42710":
+            raise
+
+
 def upgrade() -> None:
     # Define Enums with create_type=False to prevent auto-creation in create_table
     userrole = sa.Enum("user", "admin", name="userrole", create_type=False)
-    documentstatus = sa.Enum("processing", "completed", "failed", name="documentstatus", create_type=False)
-    taskstatus = sa.Enum("pending", "running", "completed", "failed", name="taskstatus", create_type=False)
+    documentstatus = sa.Enum(
+        "processing", "completed", "failed", name="documentstatus", create_type=False
+    )
+    taskstatus = sa.Enum(
+        "pending", "running", "completed", "failed", name="taskstatus", create_type=False
+    )
 
-    # Create Enums safely using raw SQL
-    op.execute("DO $$ BEGIN CREATE TYPE userrole AS ENUM ('user', 'admin'); EXCEPTION WHEN duplicate_object THEN null; END $$;")
-    op.execute("DO $$ BEGIN CREATE TYPE documentstatus AS ENUM ('processing', 'completed', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;")
-    op.execute("DO $$ BEGIN CREATE TYPE taskstatus AS ENUM ('pending', 'running', 'completed', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;")
+    _create_enum_if_needed("userrole", ["user", "admin"])
+    _create_enum_if_needed("documentstatus", ["processing", "completed", "failed"])
+    _create_enum_if_needed("taskstatus", ["pending", "running", "completed", "failed"])
 
     op.create_table(
         "users",

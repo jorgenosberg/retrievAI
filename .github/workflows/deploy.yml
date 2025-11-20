@@ -48,6 +48,14 @@ jobs:
 
           # Configure SSH ProxyJump
           mkdir -p ~/.ssh
+          
+          # Handle IPv6 for ProxyCommand
+          if [[ "$SSH_HOST" == *":"* ]]; then
+            PROXY_TARGET="[%h]:%p"
+          else
+            PROXY_TARGET="%h:%p"
+          fi
+
           cat << EOF > ~/.ssh/config
           Host jump
             HostName $SSH_PROXY_HOST
@@ -57,7 +65,7 @@ jobs:
           Host target
             HostName $SSH_HOST
             User $SSH_USER
-            ProxyCommand sshpass -e ssh -W %h:%p -o StrictHostKeyChecking=no $SSH_PROXY_USER@$SSH_PROXY_HOST
+            ProxyCommand sshpass -e ssh -W $PROXY_TARGET -o StrictHostKeyChecking=no $SSH_PROXY_USER@$SSH_PROXY_HOST
             StrictHostKeyChecking no
           EOF
           

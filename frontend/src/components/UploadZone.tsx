@@ -3,7 +3,8 @@
  */
 
 import { useState, useRef, DragEvent, ChangeEvent } from "react";
-import { useUploadDocument, useSupportedTypes } from "@/hooks/useDocuments";
+import { useUploadDocument, useSupportedTypes, documentKeys } from "@/hooks/useDocuments";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface UploadItem {
   file: File;
@@ -21,6 +22,7 @@ export function UploadZone() {
 
   const { data: supportedTypes } = useSupportedTypes();
   const uploadMutation = useUploadDocument();
+  const queryClient = useQueryClient();
 
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -148,6 +150,11 @@ export function UploadZone() {
                 status: "completed",
               });
               clearInterval(pollInterval);
+
+              // Invalidate document list cache to show updated status
+              queryClient.invalidateQueries({ queryKey: documentKeys.lists() });
+              queryClient.invalidateQueries({ queryKey: documentKeys.stats() });
+
               // Auto-remove after 3 seconds
               setTimeout(() => {
                 setUploads((prev) => {
@@ -163,6 +170,10 @@ export function UploadZone() {
                 error: status.error || status.message,
               });
               clearInterval(pollInterval);
+
+              // Invalidate cache even on failure to show error status
+              queryClient.invalidateQueries({ queryKey: documentKeys.lists() });
+              queryClient.invalidateQueries({ queryKey: documentKeys.stats() });
             }
           }
           return newMap;

@@ -49,7 +49,7 @@ export function useDocuments(
   return useQuery<Document[]>({
     queryKey: documentKeys.list(page, pageSize, filters),
     queryFn: () => apiClient.getDocuments(page, pageSize, filters),
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 30, // 30 seconds - reduced from 5 minutes to allow faster updates
     gcTime: 1000 * 60 * 60 * 24,
     placeholderData: (previousData) => previousData,
   })

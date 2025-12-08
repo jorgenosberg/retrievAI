@@ -28,11 +28,20 @@ async def list_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     status_filter: Optional[DocumentStatus] = None,
+    search: Optional[str] = Query(None, min_length=1),
+    file_type: Optional[str] = Query(None, min_length=1),
+    uploaded_by: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    min_size: Optional[int] = None,
+    max_size: Optional[int] = None,
+    min_chunks: Optional[int] = None,
+    max_chunks: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """
-    List documents with pagination.
+    List documents with pagination and comprehensive filtering.
 
     Admins can see all documents. Regular users only see their own.
 
@@ -40,6 +49,15 @@ async def list_documents(
         - page: Page number (starts at 1)
         - page_size: Items per page (max 100)
         - status_filter: Filter by status (PROCESSING, COMPLETED, FAILED)
+        - search: Search by filename (case-insensitive partial match)
+        - file_type: Filter by file extension (e.g., 'pdf', 'docx', 'txt')
+        - uploaded_by: Filter by user ID (admin only)
+        - date_from: Filter documents created after this date (ISO format)
+        - date_to: Filter documents created before this date (ISO format)
+        - min_size: Minimum file size in bytes
+        - max_size: Maximum file size in bytes
+        - min_chunks: Minimum chunk count
+        - max_chunks: Maximum chunk count
     """
     # Build query
     query = select(Document)
@@ -47,10 +65,55 @@ async def list_documents(
     # Filter by user (unless admin)
     if current_user.role != UserRole.ADMIN:
         query = query.where(Document.uploaded_by == current_user.id)
+    elif uploaded_by is not None:
+        # Admin-only filter: filter by specific user
+        query = query.where(Document.uploaded_by == uploaded_by)
 
     # Filter by status
     if status_filter:
         query = query.where(Document.status == status_filter)
+
+    # Search by filename
+    if search:
+        query = query.where(Document.filename.ilike(f"%{search}%"))
+
+    # Filter by file type (extension)
+    if file_type:
+        # Match files ending with the extension (case-insensitive)
+        query = query.where(Document.filename.ilike(f"%.{file_type}"))
+
+    # Filter by date range
+    if date_from:
+        from datetime import datetime
+        try:
+            date_from_dt = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+            # Remove timezone info to match timezone-naive database column
+            date_from_dt = date_from_dt.replace(tzinfo=None)
+            query = query.where(Document.created_at >= date_from_dt)
+        except ValueError:
+            pass  # Invalid date format, skip filter
+
+    if date_to:
+        from datetime import datetime
+        try:
+            date_to_dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+            # Remove timezone info to match timezone-naive database column
+            date_to_dt = date_to_dt.replace(tzinfo=None)
+            query = query.where(Document.created_at <= date_to_dt)
+        except ValueError:
+            pass  # Invalid date format, skip filter
+
+    # Filter by file size
+    if min_size is not None:
+        query = query.where(Document.file_size >= min_size)
+    if max_size is not None:
+        query = query.where(Document.file_size <= max_size)
+
+    # Filter by chunk count
+    if min_chunks is not None:
+        query = query.where(Document.chunk_count >= min_chunks)
+    if max_chunks is not None:
+        query = query.where(Document.chunk_count <= max_chunks)
 
     # Order by most recent first
     query = query.order_by(col(Document.created_at).desc())

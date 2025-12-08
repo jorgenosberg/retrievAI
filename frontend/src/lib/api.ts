@@ -211,9 +211,37 @@ class ApiClient {
   }
 
   // Documents endpoints
-  async getDocuments(page = 1, pageSize = 50, statusFilter?: string) {
+  async getDocuments(
+    page = 1,
+    pageSize = 50,
+    filters?: {
+      statusFilter?: string
+      search?: string
+      fileType?: string
+      uploadedBy?: number
+      dateFrom?: string
+      dateTo?: string
+      minSize?: number
+      maxSize?: number
+      minChunks?: number
+      maxChunks?: number
+    }
+  ) {
     const response = await this.client.get('/documents/', {
-      params: { page, page_size: pageSize, status_filter: statusFilter },
+      params: {
+        page,
+        page_size: pageSize,
+        status_filter: filters?.statusFilter,
+        search: filters?.search || undefined,
+        file_type: filters?.fileType || undefined,
+        uploaded_by: filters?.uploadedBy,
+        date_from: filters?.dateFrom || undefined,
+        date_to: filters?.dateTo || undefined,
+        min_size: filters?.minSize,
+        max_size: filters?.maxSize,
+        min_chunks: filters?.minChunks,
+        max_chunks: filters?.maxChunks,
+      },
     })
     return response.data
   }

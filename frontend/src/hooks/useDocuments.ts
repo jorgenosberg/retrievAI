@@ -14,12 +14,25 @@ import type {
   SearchResult,
 } from '@/types/document'
 
+export interface DocumentFilters {
+  statusFilter?: string
+  search?: string
+  fileType?: string
+  uploadedBy?: number
+  dateFrom?: string
+  dateTo?: string
+  minSize?: number
+  maxSize?: number
+  minChunks?: number
+  maxChunks?: number
+}
+
 // Query keys
 export const documentKeys = {
   all: ['documents'] as const,
   lists: () => [...documentKeys.all, 'list'] as const,
-  list: (page: number, pageSize: number, statusFilter?: string) =>
-    [...documentKeys.lists(), { page, pageSize, statusFilter }] as const,
+  list: (page: number, pageSize: number, filters?: DocumentFilters) =>
+    [...documentKeys.lists(), { page, pageSize, ...filters }] as const,
   stats: () => [...documentKeys.all, 'stats'] as const,
   detail: (id: number) => [...documentKeys.all, 'detail', id] as const,
   uploadStatus: (fileHash: string) =>
@@ -31,11 +44,11 @@ export const documentKeys = {
 export function useDocuments(
   page = 1,
   pageSize = 50,
-  statusFilter?: string
+  filters?: DocumentFilters
 ) {
   return useQuery<Document[]>({
-    queryKey: documentKeys.list(page, pageSize, statusFilter),
-    queryFn: () => apiClient.getDocuments(page, pageSize, statusFilter),
+    queryKey: documentKeys.list(page, pageSize, filters),
+    queryFn: () => apiClient.getDocuments(page, pageSize, filters),
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 60 * 24,
     placeholderData: (previousData) => previousData,

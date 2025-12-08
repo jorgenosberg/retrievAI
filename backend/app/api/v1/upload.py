@@ -71,8 +71,11 @@ async def upload_file(
             detail="This file has already been uploaded",
         )
 
-    # Save file to upload directory
-    file_path = settings.UPLOAD_DIR / file_hash
+    # Save file to upload directory with original extension
+    # Extract extension from filename
+    import os
+    _, ext = os.path.splitext(file.filename)
+    file_path = settings.UPLOAD_DIR / f"{file_hash}{ext}"
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(file_path, "wb") as f:

@@ -1,0 +1,154 @@
+version: "3.8"
+
+# Local end-to-end testing environment
+# Completely isolated from production database and services
+
+services:
+  # Test PostgreSQL database (isolated)
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: retrievai-postgres-test
+    environment:
+      POSTGRES_USER: retrievai_test
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: retrievai_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retrievai_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Test Redis (isolated)
+  redis-test:
+    image: redis:7-alpine
+    container_name: retrievai-redis-test
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_test_data:/data
+    command:
+      [
+        "redis-server",
+        "--save",
+        "60",
+        "100",
+        "--loglevel",
+        "warning",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Test ChromaDB vector database (isolated)
+  chromadb-test:
+    image: chromadb/chroma:0.5.18
+    container_name: retrievai-chromadb-test
+    ports:
+      - "8002:8000"
+    volumes:
+      - chroma_test_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Test FastAPI backend
+  backend-test:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: retrievai-backend-test
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/scripts:/app/scripts
+      - upload_test_data:/app/data
+    environment:
+      - SECRET_KEY=test-secret-key-min-32-characters-long
+      - DEBUG=true
+      - ENVIRONMENT=test
+      - DATABASE_URL=postgresql+asyncpg://retrievai_test:test_password@postgres-test:5432/retrievai_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - CHROMA_HOST=chromadb-test
+      - CHROMA_PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - WEB_CONCURRENCY=0
+      - UVICORN_KEEP_ALIVE=45
+      - UVICORN_GRACEFUL_TIMEOUT=30
+      - UVICORN_MAX_REQUESTS=500
+      - UVICORN_RELOAD=1
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      chromadb-test:
+        condition: service_healthy
+
+  # Test ARQ worker
+  worker-test:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: retrievai-worker-test
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/scripts:/app/scripts
+      - upload_test_data:/app/data
+    environment:
+      - SECRET_KEY=test-secret-key-min-32-characters-long
+      - DEBUG=true
+      - ENVIRONMENT=test
+      - DATABASE_URL=postgresql+asyncpg://retrievai_test:test_password@postgres-test:5432/retrievai_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - CHROMA_HOST=chromadb-test
+      - CHROMA_PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - WORKER_MAX_JOBS=2
+      - WORKER_JOB_TIMEOUT=1800
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      chromadb-test:
+        condition: service_healthy
+    command: uv run --no-dev arq app.workers.tasks.WorkerSettings
+
+  # Test Frontend (React + Vite)
+  frontend-test:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: retrievai-frontend-test
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+    environment:
+      - VITE_API_URL=http://localhost:8080 # Point to test backend via host port
+    depends_on:
+      - backend-test
+
+volumes:
+  postgres_test_data:
+  redis_test_data:
+  chroma_test_data:
+  upload_test_data:

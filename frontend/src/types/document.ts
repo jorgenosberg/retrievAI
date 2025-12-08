@@ -4,9 +4,9 @@
  */
 
 export enum DocumentStatus {
-  PROCESSING = "processing",
-  COMPLETED = "completed",
-  FAILED = "failed",
+  PROCESSING = "PROCESSING",
+  COMPLETED = "COMPLETED",
+  FAILED = "FAILED",
 }
 
 export interface Document {

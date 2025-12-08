@@ -187,3 +187,4 @@ MODEL_PROMPT.txt
 .cursor/**
 
 *.sql
+.env.test

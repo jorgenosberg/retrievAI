@@ -26,17 +26,18 @@ def _create_enum_if_needed(name: str, values: list[str]) -> None:
 
 def upgrade() -> None:
     # Define Enums with create_type=False to prevent auto-creation in create_table
-    userrole = postgresql.ENUM("user", "admin", name="userrole", create_type=False)
+    # Note: Using uppercase enum values to match SQLAlchemy enum member names
+    userrole = postgresql.ENUM("USER", "ADMIN", name="userrole", create_type=False)
     documentstatus = postgresql.ENUM(
-        "processing", "completed", "failed", name="documentstatus", create_type=False
+        "PROCESSING", "COMPLETED", "FAILED", name="documentstatus", create_type=False
     )
     taskstatus = postgresql.ENUM(
-        "pending", "running", "completed", "failed", name="taskstatus", create_type=False
+        "PENDING", "RUNNING", "COMPLETED", "FAILED", name="taskstatus", create_type=False
     )
 
-    _create_enum_if_needed("userrole", ["user", "admin"])
-    _create_enum_if_needed("documentstatus", ["processing", "completed", "failed"])
-    _create_enum_if_needed("taskstatus", ["pending", "running", "completed", "failed"])
+    _create_enum_if_needed("userrole", ["USER", "ADMIN"])
+    _create_enum_if_needed("documentstatus", ["PROCESSING", "COMPLETED", "FAILED"])
+    _create_enum_if_needed("taskstatus", ["PENDING", "RUNNING", "COMPLETED", "FAILED"])
 
     op.create_table(
         "users",
@@ -46,7 +47,7 @@ def upgrade() -> None:
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("full_name", sa.String(length=255), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("role", userrole, nullable=False, server_default="user"),
+        sa.Column("role", userrole, nullable=False, server_default="USER"),
         sa.Column("hashed_password", sa.String(length=255), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("email"),
@@ -100,7 +101,7 @@ def upgrade() -> None:
         sa.Column("file_size", sa.Integer(), nullable=True),
         sa.Column("mime_type", sa.String(length=100), nullable=True),
         sa.Column("chunk_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("status", documentstatus, nullable=False, server_default="processing"),
+        sa.Column("status", documentstatus, nullable=False, server_default="PROCESSING"),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("doc_metadata", sa.JSON(), nullable=True),
         sa.Column("uploaded_by", sa.Integer(), nullable=False),
@@ -166,7 +167,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("task_type", sa.String(length=100), nullable=False),
-        sa.Column("status", taskstatus, nullable=False, server_default="pending"),
+        sa.Column("status", taskstatus, nullable=False, server_default="PENDING"),
         sa.Column("progress", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("result", sa.JSON(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
@@ -192,9 +193,9 @@ def downgrade() -> None:
     op.drop_index("ix_users_email", table_name="users")
     op.drop_table("users")
 
-    taskstatus = postgresql.ENUM("pending", "running", "completed", "failed", name="taskstatus")
-    documentstatus = postgresql.ENUM("processing", "completed", "failed", name="documentstatus")
-    userrole = postgresql.ENUM("user", "admin", name="userrole")
+    taskstatus = postgresql.ENUM("PENDING", "RUNNING", "COMPLETED", "FAILED", name="taskstatus")
+    documentstatus = postgresql.ENUM("PROCESSING", "COMPLETED", "FAILED", name="documentstatus")
+    userrole = postgresql.ENUM("USER", "ADMIN", name="userrole")
 
     taskstatus.drop(op.get_bind(), checkfirst=True)
     documentstatus.drop(op.get_bind(), checkfirst=True)

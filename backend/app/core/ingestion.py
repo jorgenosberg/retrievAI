@@ -109,7 +109,15 @@ def safe_load_single_document(file_path: Path) -> Optional[List[Document]]:
 
     try:
         loader = loader_class(str(file_path), **loader_args)
-        return loader.load()
+        docs = loader.load()
+
+        # Ensure all documents have 'page' metadata (required by chat prompts)
+        for i, doc in enumerate(docs):
+            if 'page' not in doc.metadata:
+                # Use existing page number if available, otherwise use index
+                doc.metadata['page'] = doc.metadata.get('page_number', i)
+
+        return docs
     except Exception as e:
         logger.error(f"Failed to load document {file_path.name}: {e}")
         return None
@@ -184,9 +192,17 @@ def split_documents(
             # Then split by size
             final_chunks = text_splitter.split_documents(document_chunks)
 
-            # Combine metadata
+            # Combine metadata - ensure critical fields are preserved
             for chunk in final_chunks:
-                combined_metadata = {**document.metadata, **chunk.metadata}
+                # Start with the original document's metadata (has page, file_hash, etc.)
+                combined_metadata = {**document.metadata}
+                # Then add any new metadata from the chunk (headers, etc.)
+                combined_metadata.update(chunk.metadata)
+
+                # Ensure 'page' field is always present (required by DOCUMENT_PROMPT)
+                if 'page' not in combined_metadata:
+                    combined_metadata['page'] = document.metadata.get('page', 0)
+
                 chunks.append(
                     Document(
                         page_content=chunk.page_content,
@@ -196,6 +212,9 @@ def split_documents(
         except Exception as e:
             logger.error(f"Error splitting document: {e}")
             # Add the document as-is if splitting fails
+            # Ensure page metadata exists even for error case
+            if 'page' not in document.metadata:
+                document.metadata['page'] = 0
             chunks.append(document)
 
     return chunks

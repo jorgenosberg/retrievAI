@@ -6,29 +6,29 @@ from uuid import UUID, uuid4
 from enum import Enum
 
 from sqlmodel import Field, SQLModel, Relationship, Column, String
-from sqlalchemy import JSON, Text
+from sqlalchemy import JSON, Text, Enum as SQLEnum
 
 
 # Enums
 class UserRole(str, Enum):
     """User role enumeration."""
-    USER = "user"
-    ADMIN = "admin"
+    USER = "USER"
+    ADMIN = "ADMIN"
 
 
 class DocumentStatus(str, Enum):
     """Document processing status."""
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
 class TaskStatus(str, Enum):
     """Background task status."""
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
 # Base models

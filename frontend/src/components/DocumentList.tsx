@@ -1,8 +1,4 @@
-/**
- * Document list component with comprehensive search and filtering
- */
-
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDocuments, useDeleteDocument, type DocumentFilters } from "@/hooks/useDocuments";
 import { DocumentStatus, type Document } from "@/types/document";
 import {
@@ -20,6 +16,29 @@ interface DocumentListProps {
   onDocumentClick?: (document: Document) => void;
 }
 
+type SortOption =
+  | "created_desc"
+  | "created_asc"
+  | "size_desc"
+  | "size_asc"
+  | "chunks_desc"
+  | "chunks_asc"
+  | "name_asc"
+  | "name_desc";
+
+const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
+  { value: "created_desc", label: "Newest first" },
+  { value: "created_asc", label: "Oldest first" },
+  { value: "size_desc", label: "Size: large to small" },
+  { value: "size_asc", label: "Size: small to large" },
+  { value: "chunks_desc", label: "Chunks: high to low" },
+  { value: "chunks_asc", label: "Chunks: low to high" },
+  { value: "name_asc", label: "Name A → Z" },
+  { value: "name_desc", label: "Name Z → A" },
+];
+
+const DEFAULT_SORT: SortOption = "created_desc";
+
 export function DocumentList({ onDocumentClick }: DocumentListProps) {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
@@ -30,7 +49,9 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
   const [dateRangeFilter, setDateRangeFilter] = useState("");
   const [sizeRangeFilter, setSizeRangeFilter] = useState("");
   const [chunkRangeFilter, setChunkRangeFilter] = useState("");
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showAdvancedMenu, setShowAdvancedMenu] = useState(false);
+  const [sortOption, setSortOption] = useState<SortOption>(DEFAULT_SORT);
+  const advancedMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -84,6 +105,53 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
     error,
   } = useDocuments(page, pageSize, filters);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (advancedMenuRef.current && !advancedMenuRef.current.contains(event.target as Node)) {
+        setShowAdvancedMenu(false);
+      }
+    };
+
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowAdvancedMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, []);
+
+  const sortedDocuments = useMemo(() => {
+    const docsCopy = [...documents];
+
+    return docsCopy.sort((a, b) => {
+      switch (sortOption) {
+        case "created_asc":
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case "size_desc":
+          return (b.file_size ?? 0) - (a.file_size ?? 0);
+        case "size_asc":
+          return (a.file_size ?? 0) - (b.file_size ?? 0);
+        case "chunks_desc":
+          return b.chunk_count - a.chunk_count;
+        case "chunks_asc":
+          return a.chunk_count - b.chunk_count;
+        case "name_desc":
+          return b.filename.localeCompare(a.filename);
+        case "name_asc":
+          return a.filename.localeCompare(b.filename);
+        case "created_desc":
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
+  }, [documents, sortOption]);
+
   const deleteMutation = useDeleteDocument();
 
   const handleDelete = async (id: number, filename: string) => {
@@ -109,6 +177,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
     setDateRangeFilter("");
     setSizeRangeFilter("");
     setChunkRangeFilter("");
+    setSortOption(DEFAULT_SORT);
     setPage(1);
   };
 
@@ -118,7 +187,8 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
     fileTypeFilter !== "" ||
     dateRangeFilter !== "" ||
     sizeRangeFilter !== "" ||
-    chunkRangeFilter !== "";
+    chunkRangeFilter !== "" ||
+    sortOption !== DEFAULT_SORT;
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
@@ -275,85 +345,114 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
               </select>
             </div>
 
-            {/* Advanced Filters Toggle */}
-            <button
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className="h-[38px] px-4 py-2 text-sm font-medium text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-600 rounded-md hover:bg-gray-50 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <span className="flex items-center gap-2">
-                <svg
-                  className={`h-4 w-4 transition-transform ${
-                    showAdvancedFilters ? "rotate-180" : ""
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-                Advanced
-              </span>
-            </button>
-          </div>
+            {/* Advanced Filters Popover */}
+            <div className="relative" ref={advancedMenuRef}>
+              <button
+                onClick={() => setShowAdvancedMenu((open) => !open)}
+                className="h-[38px] px-3 py-2 text-sm font-medium text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-600 rounded-md hover:bg-gray-50 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-haspopup="true"
+                aria-expanded={showAdvancedMenu}
+              >
+                <span className="flex items-center gap-2">
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"
+                    />
+                  </svg>
+                  More filters
+                </span>
+              </button>
 
-          {/* Advanced Filters Row */}
-          {showAdvancedFilters && (
-            <div className="flex flex-col lg:flex-row gap-3 pt-2 border-t border-gray-200 dark:border-zinc-700">
-              <div className="flex-1">
-                <select
-                  value={dateRangeFilter}
-                  onChange={(e) => {
-                    setDateRangeFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent text-sm"
-                >
-                  {DATE_RANGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1">
-                <select
-                  value={sizeRangeFilter}
-                  onChange={(e) => {
-                    setSizeRangeFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent text-sm"
-                >
-                  {SIZE_RANGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1">
-                <select
-                  value={chunkRangeFilter}
-                  onChange={(e) => {
-                    setChunkRangeFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent text-sm"
-                >
-                  {CHUNK_RANGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {showAdvancedMenu && (
+                <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg p-3 space-y-3 z-20">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600 dark:text-zinc-400">
+                      Date added
+                    </label>
+                    <select
+                      value={dateRangeFilter}
+                      onChange={(e) => {
+                        setDateRangeFilter(e.target.value);
+                        setPage(1);
+                      }}
+                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent text-sm"
+                    >
+                      {DATE_RANGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600 dark:text-zinc-400">
+                      File size
+                    </label>
+                    <select
+                      value={sizeRangeFilter}
+                      onChange={(e) => {
+                        setSizeRangeFilter(e.target.value);
+                        setPage(1);
+                      }}
+                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent text-sm"
+                    >
+                      {SIZE_RANGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600 dark:text-zinc-400">
+                      Length (chunks)
+                    </label>
+                    <select
+                      value={chunkRangeFilter}
+                      onChange={(e) => {
+                        setChunkRangeFilter(e.target.value);
+                        setPage(1);
+                      }}
+                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent text-sm"
+                    >
+                      {CHUNK_RANGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600 dark:text-zinc-400">
+                      Sort order
+                    </label>
+                    <select
+                      value={sortOption}
+                      onChange={(e) => setSortOption(e.target.value as SortOption)}
+                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent text-sm"
+                    >
+                      {SORT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Active Filters & Results Count Row */}
           <div className="flex items-center justify-between text-sm">
@@ -497,6 +596,29 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
                   </button>
                 </span>
               )}
+              {sortOption !== DEFAULT_SORT && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-400 text-xs font-medium">
+                  Sort: {SORT_OPTIONS.find((o) => o.value === sortOption)?.label}
+                  <button
+                    onClick={() => setSortOption(DEFAULT_SORT)}
+                    className="hover:text-primary-900 dark:hover:text-primary-300"
+                  >
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </span>
+              )}
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
@@ -510,7 +632,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
             {/* Results count and loading indicator */}
             <div className="flex items-center gap-3">
               <span className="text-gray-600 dark:text-zinc-400">
-                {documents.length} result{documents.length !== 1 ? "s" : ""}
+                {sortedDocuments.length} result{sortedDocuments.length !== 1 ? "s" : ""}
               </span>
               {isFetching && (
                 <span className="inline-flex items-center text-xs text-gray-400 dark:text-zinc-500">
@@ -592,7 +714,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
       {documents.length > 0 && (
         <div className="bg-white dark:bg-zinc-900 rounded-lg shadow overflow-hidden">
           <div className="divide-y divide-gray-200 dark:divide-zinc-700">
-            {documents.map((doc: Document) => (
+            {sortedDocuments.map((doc: Document) => (
               <div
                 key={doc.id}
                 className="p-4 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"

@@ -46,6 +46,15 @@ class ChunkContextResponse(BaseModel):
     current_index: int
 
 
+class ChunkListResponse(BaseModel):
+    """Paginated list of chunks for a document."""
+    chunks: List[ChunkResponse]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+
+
 @router.post("/context", response_model=ChunkContextResponse)
 async def get_chunk_context(
     request: ChunkContextRequest,
@@ -159,4 +168,102 @@ async def get_chunk_context(
         raise
     except Exception as e:
         logger.error(f"Error fetching chunk context: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/by-file/{file_hash}", response_model=ChunkListResponse)
+async def list_chunks_for_file(
+    file_hash: str,
+    limit: int = 200,
+    offset: int = 0,
+    search: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    List chunks for a document by file_hash with optional substring search.
+
+    Args:
+        file_hash: Document file hash
+        limit: Maximum number of chunks to return (defaults to 200, max 1000)
+        offset: Offset for pagination
+        search: Optional case-insensitive substring filter on chunk content
+    """
+    try:
+        limit = max(1, min(limit, 1000))
+        offset = max(0, offset)
+        logger.info(
+            f"Listing chunks for file_hash={file_hash} limit={limit} offset={offset} search={bool(search)}"
+        )
+
+        client = get_chroma_client()
+        collection = client.get_collection(settings.VECTORSTORE_COLLECTION_NAME)
+        results = collection.get(
+            where={"file_hash": file_hash},
+            include=["documents", "metadatas"],
+        )
+
+        if not results or not results.get("documents"):
+            raise HTTPException(
+                status_code=404,
+                detail="No chunks found for this document",
+            )
+
+        chunks = []
+        for idx, (doc, meta) in enumerate(
+            zip(results["documents"], results["metadatas"])
+        ):
+            chunks.append(
+                {
+                    "index": idx,
+                    "content": doc,
+                    "metadata": meta or {},
+                }
+            )
+
+        # Sort by page then original index for stable ordering
+        chunks.sort(
+            key=lambda x: (
+                x["metadata"].get("page", 0)
+                if x["metadata"].get("page") is not None
+                else 0,
+                x["index"],
+            )
+        )
+
+        if search:
+            search_lower = search.lower()
+            chunks = [
+                chunk
+                for chunk in chunks
+                if search_lower in chunk["content"].lower()
+            ]
+
+        total = len(chunks)
+        sliced = chunks[offset : offset + limit]
+
+        def build_chunk_response(chunk_data) -> ChunkResponse:
+            return ChunkResponse(
+                content=chunk_data["content"],
+                metadata=ChunkMetadata(
+                    source=chunk_data["metadata"].get("source", "Unknown"),
+                    page=chunk_data["metadata"].get("page"),
+                    file_hash=chunk_data["metadata"].get("file_hash"),
+                    title=chunk_data["metadata"].get("title"),
+                ),
+            )
+
+        return ChunkListResponse(
+            chunks=[build_chunk_response(chunk) for chunk in sliced],
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_more=offset + limit < total,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error listing chunks for file_hash {file_hash}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=str(e))

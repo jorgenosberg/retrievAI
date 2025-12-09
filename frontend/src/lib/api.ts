@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
 import { resetAuthCache } from '@/lib/authSession'
+import type { ChunkListResponse } from '@/types/chunk'
 
 export interface AuthTokens {
   access_token: string
@@ -470,6 +471,20 @@ class ApiClient {
       file_hash: fileHash,
       chunk_content: chunkContent,
       context_size: contextSize,
+    })
+    return response.data
+  }
+
+  async getDocumentChunks(
+    fileHash: string,
+    params?: { limit?: number; offset?: number; search?: string }
+  ): Promise<ChunkListResponse> {
+    const response = await this.client.get(`/chunks/by-file/${fileHash}`, {
+      params: {
+        limit: params?.limit,
+        offset: params?.offset,
+        search: params?.search,
+      },
     })
     return response.data
   }

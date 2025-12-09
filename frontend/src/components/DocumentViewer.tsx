@@ -23,7 +23,8 @@ export function DocumentViewer({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedChunkIndex, setSelectedChunkIndex] = useState(0);
+  const [selectedPageIndex, setSelectedPageIndex] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -38,7 +39,8 @@ export function DocumentViewer({
     setTotal(0);
     setOffset(0);
     setHasMore(false);
-    setSelectedIndex(0);
+    setSelectedChunkIndex(0);
+    setSelectedPageIndex(0);
     setError(null);
     loadChunks(true, debouncedSearch);
   }, [document.file_hash, debouncedSearch]);
@@ -64,7 +66,8 @@ export function DocumentViewer({
       );
       setError(null);
       if (reset) {
-        setSelectedIndex(0);
+        setSelectedChunkIndex(0);
+        setSelectedPageIndex(0);
       }
     } catch (err) {
       const message =
@@ -76,30 +79,75 @@ export function DocumentViewer({
     }
   };
 
-  const handleSelect = (index: number) => {
-    setSelectedIndex(index);
+  const handleSelectChunk = (index: number) => {
+    setSelectedChunkIndex(index);
+    const pageIdx = pages.findIndex((page) =>
+      page.chunks.some((chunk) => chunk.globalIndex === index)
+    );
+    if (pageIdx >= 0) {
+      setSelectedPageIndex(pageIdx);
+    }
   };
 
   const handlePrev = () => {
-    setSelectedIndex((idx) => Math.max(0, idx - 1));
+    setSelectedChunkIndex((idx) => {
+      const nextIdx = Math.max(0, idx - 1);
+      const pageIdx = findPageIndexForChunk(nextIdx);
+      if (pageIdx >= 0) setSelectedPageIndex(pageIdx);
+      return nextIdx;
+    });
   };
 
   const handleNext = () => {
-    setSelectedIndex((idx) => Math.min(chunks.length - 1, idx + 1));
+    setSelectedChunkIndex((idx) => {
+      const nextIdx = Math.min(chunks.length - 1, idx + 1);
+      const pageIdx = findPageIndexForChunk(nextIdx);
+      if (pageIdx >= 0) setSelectedPageIndex(pageIdx);
+      return nextIdx;
+    });
   };
 
-  const activeChunk = chunks[selectedIndex] || null;
+  const pages = useMemo(() => {
+    if (!chunks.length) return [];
+    const groups: Array<{
+      page: number | null;
+      title?: string;
+      chunks: Array<{ chunk: Chunk; globalIndex: number }>;
+    }> = [];
+    const byPage = new Map<number | null, Array<{ chunk: Chunk; globalIndex: number }>>();
 
-  const nearbyChunks = useMemo(() => {
-    if (!chunks.length || !activeChunk) return [];
-    const start = Math.max(0, selectedIndex - 2);
-    const end = Math.min(chunks.length, selectedIndex + 3);
-    return chunks.slice(start, end).map((chunk, idx) => ({
-      chunk,
-      isActive: start + idx === selectedIndex,
-      index: start + idx,
-    }));
-  }, [chunks, selectedIndex, activeChunk]);
+    chunks.forEach((chunk, idx) => {
+      const page = chunk.metadata.page ?? null;
+      if (!byPage.has(page)) {
+        byPage.set(page, []);
+      }
+      byPage.get(page)?.push({ chunk, globalIndex: idx });
+    });
+
+    const sortedPages = Array.from(byPage.keys()).sort((a, b) => {
+      if (a === null) return 1;
+      if (b === null) return -1;
+      return a - b;
+    });
+
+    sortedPages.forEach((page) => {
+      groups.push({
+        page,
+        chunks: byPage.get(page) || [],
+      });
+    });
+
+    return groups;
+  }, [chunks]);
+
+  const findPageIndexForChunk = (chunkIndex: number) => {
+    return pages.findIndex((page) =>
+      page.chunks.some((chunk) => chunk.globalIndex === chunkIndex)
+    );
+  };
+
+  const activeChunk = chunks[selectedChunkIndex] || null;
+  const activePage = pages[selectedPageIndex] || null;
 
   const renderChunkBadge = (chunk: Chunk) => {
     if (chunk.metadata.page !== undefined) {
@@ -179,15 +227,15 @@ export function DocumentViewer({
 
         {/* Body */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Chunk list / filters */}
-          <div className="w-80 border-r border-gray-200 dark:border-zinc-800 flex flex-col">
+          {/* Page list / filters */}
+          <div className="w-72 border-r border-gray-200 dark:border-zinc-800 flex flex-col">
             <div className="p-4 space-y-3">
               <div className="relative">
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search within chunks..."
+                  placeholder="Search within pages..."
                   className="w-full rounded-md border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
                 <svg
@@ -205,7 +253,7 @@ export function DocumentViewer({
                 </svg>
               </div>
               <p className="text-xs text-gray-500 dark:text-zinc-400">
-                Showing {chunks.length} of {total || document.chunk_count} chunks
+                {pages.length} page{pages.length === 1 ? "" : "s"} • {chunks.length} chunks
               </p>
             </div>
 
@@ -220,32 +268,37 @@ export function DocumentViewer({
                   {error}
                 </div>
               )}
-              {!loading && !error && chunks.length === 0 && (
+              {!loading && !error && pages.length === 0 && (
                 <div className="p-4 text-sm text-gray-500 dark:text-zinc-400">
-                  No chunks found for this document.
+                  No pages found for this document.
                 </div>
               )}
               <div className="divide-y divide-gray-200 dark:divide-zinc-800">
-                {chunks.map((chunk, idx) => (
+                {pages.map((page, idx) => (
                   <button
-                    key={`${chunk.metadata.file_hash}-${idx}`}
-                    onClick={() => handleSelect(idx)}
+                    key={`page-${page.page ?? "unknown"}`}
+                    onClick={() => {
+                      setSelectedPageIndex(idx);
+                      if (page.chunks[0]) {
+                        handleSelectChunk(page.chunks[0].globalIndex);
+                      }
+                    }}
                     className={`w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer ${
-                      idx === selectedIndex
+                      idx === selectedPageIndex
                         ? "bg-primary-50 dark:bg-primary-900/20"
                         : ""
                     }`}
                   >
                     <div className="flex items-center justify-between text-xs text-gray-500 dark:text-zinc-400 mb-1">
                       <span className="font-medium text-gray-700 dark:text-zinc-200">
-                        {renderChunkBadge(chunk)}
+                        Page {page.page ?? "?"}
                       </span>
                       <span className="text-[11px]">
-                        Chunk {idx + 1}
+                        {page.chunks.length} chunk{page.chunks.length === 1 ? "" : "s"}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-800 dark:text-zinc-100 line-clamp-3">
-                      {chunk.content}
+                    <p className="text-xs text-gray-600 dark:text-zinc-300 line-clamp-2">
+                      {page.chunks[0]?.chunk.content || "Document page"}
                     </p>
                   </button>
                 ))}
@@ -299,13 +352,34 @@ export function DocumentViewer({
                   </p>
                 )}
                 <p className="text-xs text-gray-500 dark:text-zinc-400">
-                  Chunk {selectedIndex + 1} of {total || document.chunk_count}
+                  Chunk {selectedChunkIndex + 1} of {total || document.chunk_count} • Page{" "}
+                  {activeChunk?.metadata.page ?? "?"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() =>
+                    setSelectedPageIndex((idx) => Math.max(0, idx - 1))
+                  }
+                  disabled={selectedPageIndex <= 0}
+                  className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-100 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Prev page
+                </button>
+                <button
+                  onClick={() =>
+                    setSelectedPageIndex((idx) =>
+                      Math.min(pages.length - 1, idx + 1)
+                    )
+                  }
+                  disabled={selectedPageIndex >= pages.length - 1}
+                  className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-100 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Next page
+                </button>
+                <button
                   onClick={handlePrev}
-                  disabled={selectedIndex === 0}
+                  disabled={selectedChunkIndex === 0}
                   className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-100 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <svg
@@ -325,7 +399,7 @@ export function DocumentViewer({
                 </button>
                 <button
                   onClick={handleNext}
-                  disabled={selectedIndex >= chunks.length - 1}
+                  disabled={selectedChunkIndex >= chunks.length - 1}
                   className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-100 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Next
@@ -375,41 +449,53 @@ export function DocumentViewer({
                   {error}
                 </div>
               )}
-              {!loading && !error && activeChunk && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800">
-                    <p className="whitespace-pre-wrap text-gray-900 dark:text-zinc-100 leading-relaxed">
-                      {activeChunk.content}
-                    </p>
+              {!loading && !error && activePage && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-zinc-300">
+                    <span className="font-semibold">
+                      Page {activePage.page ?? "?"}
+                    </span>
+                    <span>•</span>
+                    <span>
+                      {activePage.chunks.length} chunk
+                      {activePage.chunks.length === 1 ? "" : "s"}
+                    </span>
                   </div>
 
-                  {nearbyChunks.length > 1 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-gray-500 dark:text-zinc-400 uppercase">
-                        Nearby context
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {nearbyChunks
-                          .filter((item) => !item.isActive)
-                          .map((item) => (
-                            <div
-                              key={`context-${item.index}`}
-                              className="p-3 rounded-md border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900"
-                            >
-                              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-zinc-400 mb-1">
-                                <span className="font-medium text-gray-700 dark:text-zinc-200">
-                                  {renderChunkBadge(item.chunk)}
-                                </span>
-                                <span>Chunk {item.index + 1}</span>
-                              </div>
-                              <p className="text-sm text-gray-800 dark:text-zinc-200 line-clamp-3">
-                                {item.chunk.content}
-                              </p>
-                            </div>
-                          ))}
+                  <div className="space-y-3">
+                    {activePage.chunks.map(({ chunk, globalIndex }) => (
+                      <div
+                        key={`chunk-${globalIndex}`}
+                        className={`p-4 rounded-lg border ${
+                          globalIndex === selectedChunkIndex
+                            ? "bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800"
+                            : "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-zinc-800"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-zinc-400 mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-[11px] text-gray-700 dark:text-zinc-200">
+                              Chunk {globalIndex + 1}
+                            </span>
+                            {chunk.metadata.page !== undefined && (
+                              <span className="text-[11px]">
+                                Page {chunk.metadata.page}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleSelectChunk(globalIndex)}
+                            className="text-[11px] text-primary-600 dark:text-primary-400 hover:underline cursor-pointer"
+                          >
+                            Focus
+                          </button>
+                        </div>
+                        <p className="whitespace-pre-wrap text-gray-900 dark:text-zinc-100 leading-relaxed">
+                          {chunk.content}
+                        </p>
                       </div>
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

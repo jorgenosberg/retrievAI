@@ -74,7 +74,8 @@ services:
       - WEB_CONCURRENCY=0
       - UVICORN_KEEP_ALIVE=45
       - UVICORN_GRACEFUL_TIMEOUT=30
-      - UVICORN_MAX_REQUESTS=500
+      # Disable request limit in local dev to avoid restarts during client-side polling
+      - UVICORN_MAX_REQUESTS=0
       - UVICORN_RELOAD=1
     depends_on:
       postgres:

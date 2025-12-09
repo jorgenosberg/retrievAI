@@ -2,7 +2,7 @@
  * Drag-and-drop file upload component with progress tracking
  */
 
-import { useState, useRef, DragEvent, ChangeEvent } from "react";
+import { useState, useRef, useEffect, DragEvent, ChangeEvent } from "react";
 import { useUploadDocument, useSupportedTypes, documentKeys } from "@/hooks/useDocuments";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -15,14 +15,77 @@ interface UploadItem {
   error?: string;
 }
 
+type UploadMap = Map<string, UploadItem>;
+
+// Keep uploads in module scope so they survive route changes
+const uploadStore: {
+  uploads: UploadMap;
+  subscribers: Set<(uploads: UploadMap) => void>;
+} = {
+  uploads: new Map(),
+  subscribers: new Set(),
+};
+
+// Track polling intervals per upload in module scope so they keep running when the component unmounts
+const pollIntervals = new Map<string, ReturnType<typeof setInterval>>();
+
+const subscribeToUploads = (callback: (uploads: UploadMap) => void) => {
+  uploadStore.subscribers.add(callback);
+  return () => uploadStore.subscribers.delete(callback);
+};
+
+const updateUploadsInStore = (mutator: (draft: UploadMap) => void) => {
+  const draft = new Map(uploadStore.uploads);
+  mutator(draft);
+  uploadStore.uploads = draft;
+  uploadStore.subscribers.forEach((cb) => cb(draft));
+};
+
+const clearPollingInterval = (uploadId: string) => {
+  const intervalId = pollIntervals.get(uploadId);
+  if (intervalId) {
+    clearInterval(intervalId);
+    pollIntervals.delete(uploadId);
+  }
+};
+
 export function UploadZone() {
-  const [uploads, setUploads] = useState<Map<string, UploadItem>>(new Map());
+  const [uploads, setUploads] = useState<UploadMap>(
+    () => new Map(uploadStore.uploads)
+  );
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: supportedTypes } = useSupportedTypes();
   const uploadMutation = useUploadDocument();
   const queryClient = useQueryClient();
+
+  // Keep local state in sync with the shared store
+  useEffect(() => {
+    const unsubscribe = subscribeToUploads((nextUploads) => {
+      setUploads(new Map(nextUploads));
+    });
+    return unsubscribe;
+  }, []);
+
+  // If we remount while uploads are still processing, restart polling for them
+  useEffect(() => {
+    uploads.forEach((upload, uploadId) => {
+      if (upload.status === "processing" && upload.fileHash && !pollIntervals.has(uploadId)) {
+        pollProcessingStatus(uploadId, upload.fileHash);
+      }
+    });
+    // We intentionally exclude pollProcessingStatus from deps to avoid restarting intervals unnecessarily
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploads]);
+
+  // Stop polling when this component unmounts (e.g., navigating away) to avoid background requests
+  useEffect(() => {
+    return () => {
+      pollIntervals.forEach((intervalId) => clearInterval(intervalId));
+      pollIntervals.clear();
+    };
+  }, []);
 
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -62,14 +125,12 @@ export function UploadZone() {
       const uploadId = `${file.name}-${Date.now()}`;
 
       // Add to upload list
-      setUploads((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(uploadId, {
+      updateUploadsInStore((draft) => {
+        draft.set(uploadId, {
           file,
           progress: 0,
           status: "uploading",
         });
-        return newMap;
       });
 
       try {
@@ -77,23 +138,20 @@ export function UploadZone() {
         const response = await uploadMutation.mutateAsync({
           file,
           onProgress: (progress) => {
-            setUploads((prev) => {
-              const newMap = new Map(prev);
-              const item = newMap.get(uploadId);
+            updateUploadsInStore((draft) => {
+              const item = draft.get(uploadId);
               if (item) {
-                newMap.set(uploadId, { ...item, progress });
+                draft.set(uploadId, { ...item, progress });
               }
-              return newMap;
             });
           },
         });
 
         // Upload complete, now processing
-        setUploads((prev) => {
-          const newMap = new Map(prev);
-          const item = newMap.get(uploadId);
+        updateUploadsInStore((draft) => {
+          const item = draft.get(uploadId);
           if (item) {
-            newMap.set(uploadId, {
+            draft.set(uploadId, {
               ...item,
               status: "processing",
               progress: 100,
@@ -101,29 +159,28 @@ export function UploadZone() {
               documentId: response.document_id,
             });
           }
-          return newMap;
         });
 
         // Start polling for processing status
         pollProcessingStatus(uploadId, response.file_hash);
       } catch (error: any) {
-        setUploads((prev) => {
-          const newMap = new Map(prev);
-          const item = newMap.get(uploadId);
+        updateUploadsInStore((draft) => {
+          const item = draft.get(uploadId);
           if (item) {
-            newMap.set(uploadId, {
+            draft.set(uploadId, {
               ...item,
               status: "failed",
               error: error.response?.data?.detail || error.message,
             });
           }
-          return newMap;
         });
       }
     }
   };
 
   const pollProcessingStatus = async (uploadId: string, fileHash: string) => {
+    clearPollingInterval(uploadId);
+
     const pollInterval = setInterval(async () => {
       try {
         const response = await fetch(`/api/v1/upload/status/${fileHash}`, {
@@ -133,23 +190,22 @@ export function UploadZone() {
         });
 
         if (!response.ok) {
-          clearInterval(pollInterval);
+          clearPollingInterval(uploadId);
           return;
         }
 
         const status = await response.json();
 
-        setUploads((prev) => {
-          const newMap = new Map(prev);
-          const item = newMap.get(uploadId);
+        updateUploadsInStore((draft) => {
+          const item = draft.get(uploadId);
           if (item && item.fileHash === fileHash) {
             // Update based on processing status
             if (status.status === "completed") {
-              newMap.set(uploadId, {
+              draft.set(uploadId, {
                 ...item,
                 status: "completed",
               });
-              clearInterval(pollInterval);
+              clearPollingInterval(uploadId);
 
               // Invalidate document list cache to show updated status
               queryClient.invalidateQueries({ queryKey: documentKeys.lists() });
@@ -157,32 +213,31 @@ export function UploadZone() {
 
               // Auto-remove after 3 seconds
               setTimeout(() => {
-                setUploads((prev) => {
-                  const newMap = new Map(prev);
-                  newMap.delete(uploadId);
-                  return newMap;
+                updateUploadsInStore((cleanupDraft) => {
+                  cleanupDraft.delete(uploadId);
                 });
               }, 3000);
             } else if (status.status === "failed") {
-              newMap.set(uploadId, {
+              draft.set(uploadId, {
                 ...item,
                 status: "failed",
                 error: status.error || status.message,
               });
-              clearInterval(pollInterval);
+              clearPollingInterval(uploadId);
 
               // Invalidate cache even on failure to show error status
               queryClient.invalidateQueries({ queryKey: documentKeys.lists() });
               queryClient.invalidateQueries({ queryKey: documentKeys.stats() });
             }
           }
-          return newMap;
         });
       } catch (error) {
         console.error("Failed to poll status:", error);
-        clearInterval(pollInterval);
+        clearPollingInterval(uploadId);
       }
     }, 2000);
+
+    pollIntervals.set(uploadId, pollInterval);
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -192,10 +247,9 @@ export function UploadZone() {
   };
 
   const removeUpload = (uploadId: string) => {
-    setUploads((prev) => {
-      const newMap = new Map(prev);
-      newMap.delete(uploadId);
-      return newMap;
+    clearPollingInterval(uploadId);
+    updateUploadsInStore((draft) => {
+      draft.delete(uploadId);
     });
   };
 

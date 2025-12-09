@@ -677,7 +677,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
       )}
 
       {/* Pagination */}
-      {documents.length === pageSize && (
+      {(documents.length > 0 && (page > 1 || documents.length === pageSize)) && (
         <div className="flex items-center justify-between bg-white dark:bg-zinc-900 rounded-lg shadow px-4 py-3">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}

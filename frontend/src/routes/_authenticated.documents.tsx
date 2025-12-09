@@ -91,11 +91,9 @@ function DocumentsPage() {
         <DocumentStats />
 
         {/* Upload Zone */}
-        {showUpload && (
-          <div className="mb-6">
-            <UploadZone />
-          </div>
-        )}
+        <div className={`mb-6 ${showUpload ? "" : "hidden"}`}>
+          <UploadZone />
+        </div>
 
         {/* Document List */}
         <DocumentList onDocumentClick={handleDocumentClick} />

@@ -144,7 +144,7 @@ services:
       - ./frontend/index.html:/app/index.html
       - ./frontend/vite.config.ts:/app/vite.config.ts
     environment:
-      - VITE_API_URL=http://localhost:8080 # Point to test backend via host port
+      - VITE_API_URL=http://backend-test:8000 # Point to test backend service in the compose network
     depends_on:
       - backend-test
 

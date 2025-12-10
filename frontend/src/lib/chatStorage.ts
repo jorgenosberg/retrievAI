@@ -129,6 +129,15 @@ export function persistChatSession(
   })
 }
 
+export function deleteChatSession(sessionId: string) {
+  const cache = readCache()
+  const remaining = cache.sessions.filter((session) => session.id !== sessionId)
+  writeCache({
+    version: CHAT_CACHE_VERSION,
+    sessions: remaining,
+  })
+}
+
 export function clearChatSessions() {
   removeItem(CHAT_CACHE_KEY)
   notifySessionListeners()

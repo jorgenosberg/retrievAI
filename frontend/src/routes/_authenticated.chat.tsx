@@ -7,6 +7,72 @@ import type { Source } from "@/types/chat";
 import { generateChatSessionId } from "@/lib/chatStorage";
 import { getStoredPreferences } from "@/lib/preferencesStorage";
 
+function formatMessageTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+
+  if (isToday) {
+    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  const isThisYear = date.getFullYear() === now.getFullYear();
+  if (isThisYear) {
+    return date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatDateSeparator(timestamp: number): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (date.toDateString() === now.toDateString()) {
+    return "Today";
+  }
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+
+  const isThisYear = date.getFullYear() === now.getFullYear();
+  if (isThisYear) {
+    return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  }
+
+  return date.toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function shouldShowDateSeparator(
+  currentTimestamp: number | undefined,
+  previousTimestamp: number | undefined
+): boolean {
+  if (!currentTimestamp) return false;
+  if (!previousTimestamp) return true;
+
+  const current = new Date(currentTimestamp);
+  const previous = new Date(previousTimestamp);
+  return current.toDateString() !== previous.toDateString();
+}
+
 export const Route = createFileRoute("/_authenticated/chat")({
   validateSearch: (search) => ({
     sessionId:
@@ -349,37 +415,60 @@ function ChatPage() {
             </div>
           ) : (
             <>
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-3xl rounded-lg px-4 py-3 shadow-sm ${
-                      msg.role === "user"
-                        ? "bg-primary-600 text-white dark:bg-primary-500"
-                        : "border border-gray-200 bg-white text-gray-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-                    }`}
-                  >
-                    {msg.role === "user" ? (
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
-                    ) : (
-                      <>
-                        <MessageContent
-                          content={msg.content}
-                          sources={msg.sources}
-                        />
-                        <MessageUtilities
-                          content={msg.content}
-                          sources={msg.sources}
-                          onCopy={() => {}}
-                          onExpandSource={(source) => setExpandedSource(source)}
-                        />
-                      </>
+              {messages.map((msg, idx) => {
+                const prevMsg = messages[idx - 1];
+                const showDateSeparator = shouldShowDateSeparator(
+                  msg.timestamp,
+                  prevMsg?.timestamp
+                );
+
+                return (
+                  <div key={idx}>
+                    {showDateSeparator && msg.timestamp && (
+                      <div className="my-4 flex items-center gap-3">
+                        <div className="h-px flex-1 bg-gray-200 dark:bg-zinc-700" />
+                        <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">
+                          {formatDateSeparator(msg.timestamp)}
+                        </span>
+                        <div className="h-px flex-1 bg-gray-200 dark:bg-zinc-700" />
+                      </div>
                     )}
+                    <div
+                      className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+                    >
+                      <div
+                        className={`max-w-3xl rounded-lg px-4 py-3 shadow-sm ${
+                          msg.role === "user"
+                            ? "bg-primary-600 text-white dark:bg-primary-500"
+                            : "border border-gray-200 bg-white text-gray-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                        }`}
+                      >
+                        {msg.role === "user" ? (
+                          <div className="whitespace-pre-wrap">{msg.content}</div>
+                        ) : (
+                          <>
+                            <MessageContent
+                              content={msg.content}
+                              sources={msg.sources}
+                            />
+                            <MessageUtilities
+                              content={msg.content}
+                              sources={msg.sources}
+                              onCopy={() => {}}
+                              onExpandSource={(source) => setExpandedSource(source)}
+                            />
+                          </>
+                        )}
+                      </div>
+                      {msg.timestamp && (
+                        <span className="mt-1 text-xs text-gray-500 dark:text-zinc-500">
+                          {formatMessageTime(msg.timestamp)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {(streamingMessage || statusMessage) && (
                 <div className="flex justify-start">

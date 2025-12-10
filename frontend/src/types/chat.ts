@@ -5,6 +5,7 @@ export interface ChatMessage {
   content: string;
   sources?: Source[];
   isStreaming?: boolean;
+  timestamp?: number;
 }
 
 export interface Source {

@@ -72,6 +72,7 @@ export function useChat(conversationId?: string) {
   const currentSessionIdRef = useRef(sessionId)
   const skipNextPersistRef = useRef(false)
   const latestMessagesRef = useRef(messages)
+  const lastPersistedMessagesRef = useRef(messages)
 
   useEffect(() => {
     latestMessagesRef.current = messages
@@ -80,7 +81,9 @@ export function useChat(conversationId?: string) {
   useEffect(() => {
     currentSessionIdRef.current = sessionId
     skipNextPersistRef.current = true
-    setMessages(loadChatSession(sessionId))
+    const loaded = loadChatSession(sessionId)
+    setMessages(loaded)
+    lastPersistedMessagesRef.current = loaded
     setSessionConversationId(getSessionConversationId(sessionId) ?? null)
   }, [sessionId])
 
@@ -124,6 +127,11 @@ export function useChat(conversationId?: string) {
     ) {
       return
     }
+    // Only persist if messages actually changed (not just loaded from storage)
+    if (areMessagesEqual(messages, lastPersistedMessagesRef.current)) {
+      return
+    }
+    lastPersistedMessagesRef.current = messages
     persistChatSession(sessionId, messages, sessionConversationId)
   }, [messages, sessionId, sessionConversationId])
 
@@ -157,6 +165,7 @@ export function useChat(conversationId?: string) {
       const userMessage: ChatMessage = {
         role: 'user',
         content: message,
+        timestamp: Date.now(),
       }
       pushMessage(userMessage)
 
@@ -230,6 +239,7 @@ export function useChat(conversationId?: string) {
                   role: 'assistant',
                   content: event.content.answer || currentAnswer,
                   sources: currentSources,
+                  timestamp: Date.now(),
                 }
                 pushMessage(assistantMessage)
                 stopStreamingForRequest('Response complete')

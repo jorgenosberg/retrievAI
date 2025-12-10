@@ -1,9 +1,17 @@
-import { useMemo, useState, type ReactNode, type SVGProps } from "react";
+import {
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  type ReactNode,
+  type SVGProps,
+} from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { apiClient } from "@/lib/api";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import {
   clearChatSessions,
+  deleteChatSession,
   generateChatSessionId,
   type StoredChatSession,
 } from "@/lib/chatStorage";
@@ -57,8 +65,15 @@ const formatRelativeTime = (timestamp: number) => {
   return new Date(numericTimestamp).toLocaleDateString();
 };
 
+type ContextMenuState = {
+  x: number;
+  y: number;
+  sessionId: string;
+} | null;
+
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const navigate = useNavigate();
   const location = useRouterState({
     select: (state) => state.location,
@@ -90,6 +105,34 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const activeSessionId = pathname.startsWith("/chat")
     ? (searchParams?.sessionId ?? "default")
     : null;
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [contextMenu]);
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, sessionId: string) => {
+      e.preventDefault();
+      setContextMenu({ x: e.clientX, y: e.clientY, sessionId });
+    },
+    []
+  );
+
+  const handleDeleteSession = useCallback(
+    (sessionId: string) => {
+      setContextMenu(null);
+      deleteChatSession(sessionId);
+      // Navigate away if deleting the active session
+      if (activeSessionId === sessionId) {
+        navigate({ to: "/chat", search: { sessionId: "default" } });
+      }
+    },
+    [activeSessionId, navigate]
+  );
 
   const handleLogout = () => {
     apiClient.logout();
@@ -227,6 +270,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                       <button
                         key={session.id}
                         onClick={() => handleSelectSession(session.id)}
+                        onContextMenu={(e) => handleContextMenu(e, session.id)}
                         className={`w-full rounded-md border px-3 py-2 text-left text-sm transition cursor-pointer ${
                           active
                             ? "border-primary-200 bg-primary-50 text-primary-900 dark:border-primary-400/40 dark:bg-primary-500/10 dark:text-primary-100"
@@ -284,6 +328,22 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
           {children}
         </main>
       </div>
+
+      {/* Context menu for chat sessions */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[140px] rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-800"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onClick={() => handleDeleteSession(contextMenu.sessionId)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger-600 hover:bg-gray-100 dark:text-danger-400 dark:hover:bg-zinc-700 cursor-pointer"
+          >
+            <TrashIcon className="h-4 w-4" />
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -390,6 +450,24 @@ function XIcon(props: SVGProps<SVGSVGElement>) {
     >
       <path d="M18 6L6 18" />
       <path d="M6 6l12 12" />
+    </svg>
+  );
+}
+
+function TrashIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
+      <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
     </svg>
   );
 }

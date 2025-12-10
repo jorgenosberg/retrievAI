@@ -10,6 +10,12 @@
 
 RAG-based document retrieval and chat application powered by LangChain.
 
+<p align="center">
+  <img src="docs/assets/retrievai-login-page.png" alt="Login" width="30%">
+  <img src="docs/assets/retrievai-chat-page.png" alt="Chat" width="30%">
+  <img src="docs/assets/retrievai-docs-page.png" alt="Documentation" width="30%">
+</p>
+
 ## Stack
 
 - **Backend:** FastAPI, LangChain, PostgreSQL, ChromaDB
@@ -28,6 +34,8 @@ docker compose up -d
 - API Docs: `http://localhost:8000/api/docs`
 
 ## Documentation
+
+📖 **[Full Documentation](https://jorgenosberg.github.io/retrievAI/)**
 
 - [Deployment Guide](docs/DEPLOYMENT.md)
 - [Testing Guide](docs/TESTING.md)

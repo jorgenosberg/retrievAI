@@ -5,10 +5,11 @@ import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { ThemeProvider } from "@/providers/ThemeProvider";
-import { QUERY_CACHE_STORAGE_KEY } from "@/lib/cacheKeys";
+import { getQueryCacheKey } from "@/lib/cacheKeys";
 import { routeTree } from "./routeTree.gen";
 import "./index.css";
 
+const cacheKey = getQueryCacheKey();
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -25,7 +26,7 @@ const isBrowser = typeof window !== "undefined";
 const persister = isBrowser
   ? createSyncStoragePersister({
       storage: window.localStorage,
-      key: QUERY_CACHE_STORAGE_KEY,
+      key: cacheKey,
       throttleTime: 1000,
     })
   : undefined;
@@ -53,8 +54,13 @@ if (!rootElement.innerHTML) {
         client={queryClient}
         persistOptions={{
           persister: persister!,
-          buster: CACHE_VERSION,
+          buster: `${CACHE_VERSION}:${cacheKey}`,
           maxAge: 1000 * 60 * 60 * 24, // discard everything after 24h to avoid stale UI
+          dehydrateOptions: {
+            // Only persist document-related queries; user-specific data stays in-memory
+            shouldDehydrateQuery: (query) =>
+              Array.isArray(query.queryKey) && query.queryKey[0] === "documents",
+          },
         }}
       >
         <ThemeProvider>

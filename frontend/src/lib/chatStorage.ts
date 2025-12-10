@@ -1,8 +1,15 @@
 import { getItem, removeItem, setItem } from '@/lib/storage'
+import { getCurrentUserId } from '@/lib/authSession'
 import type { ChatMessage } from '@/types/chat'
 
-export const CHAT_CACHE_KEY = 'retrievai:chat-sessions'
+const CHAT_CACHE_KEY_PREFIX = 'retrievai:chat-sessions'
+export const CHAT_CACHE_KEY = CHAT_CACHE_KEY_PREFIX // For backwards compat / external references
 const CHAT_CACHE_VERSION = 1
+
+function getUserScopedCacheKey(): string {
+  const userId = getCurrentUserId()
+  return userId ? `${CHAT_CACHE_KEY_PREFIX}:${userId}` : CHAT_CACHE_KEY_PREFIX
+}
 const CHAT_SESSION_TTL = 1000 * 60 * 60 * 24 * 30 // 30 days
 const CHAT_SESSION_LIMIT = 20
 
@@ -49,7 +56,7 @@ function pruneSessions(sessions: StoredChatSession[]) {
 
 function readCache(): ChatCachePayload {
   try {
-    const raw = getItem(CHAT_CACHE_KEY)
+    const raw = getItem(getUserScopedCacheKey())
     if (!raw) {
       return emptyCache()
     }
@@ -77,7 +84,7 @@ function readCache(): ChatCachePayload {
 
 function writeCache(cache: ChatCachePayload) {
   setItem(
-    CHAT_CACHE_KEY,
+    getUserScopedCacheKey(),
     JSON.stringify({
       ...cache,
       sessions: cache.sessions.slice(0, CHAT_SESSION_LIMIT),
@@ -139,7 +146,7 @@ export function deleteChatSession(sessionId: string) {
 }
 
 export function clearChatSessions() {
-  removeItem(CHAT_CACHE_KEY)
+  removeItem(getUserScopedCacheKey())
   notifySessionListeners()
 }
 
@@ -222,7 +229,8 @@ export function generateChatSessionId() {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === CHAT_CACHE_KEY) {
+    // React to changes in any user-scoped chat cache key
+    if (event.key?.startsWith(CHAT_CACHE_KEY_PREFIX)) {
       notifySessionListeners()
     }
   })

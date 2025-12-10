@@ -1,6 +1,7 @@
 import type { User } from '@/lib/api'
 
 const AUTH_CACHE_TTL = 1000 * 60 * 5 // 5 minutes (much less than token expiry)
+const CURRENT_USER_ID_KEY = 'retrievai:current-user-id'
 
 let cachedUser: User | null = null
 let lastValidated = 0
@@ -20,9 +21,30 @@ export const getStoredRefreshToken = () => {
   return localStorage.getItem('refresh_token')
 }
 
+export function getCurrentUserId(): number | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const stored = localStorage.getItem(CURRENT_USER_ID_KEY)
+  if (!stored) return null
+  const parsed = parseInt(stored, 10)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function setCurrentUserId(userId: number) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(CURRENT_USER_ID_KEY, String(userId))
+}
+
+function clearCurrentUserId() {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(CURRENT_USER_ID_KEY)
+}
+
 export function resetAuthCache() {
   cachedUser = null
   lastValidated = 0
+  clearCurrentUserId()
 }
 
 export function getCachedUser(): User | null {
@@ -35,6 +57,7 @@ export function getCachedUser(): User | null {
 export function setCachedUser(user: User) {
   cachedUser = user
   lastValidated = Date.now()
+  setCurrentUserId(user.id)
 }
 
 export async function ensureCurrentUser(
@@ -52,6 +75,7 @@ export async function ensureCurrentUser(
       .then((user) => {
         cachedUser = user
         lastValidated = Date.now()
+        setCurrentUserId(user.id)
         return user
       })
       .finally(() => {

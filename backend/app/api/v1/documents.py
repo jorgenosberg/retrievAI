@@ -12,7 +12,7 @@ from app.config import get_settings
 from app.db.session import get_session
 from app.db.models import Document, DocumentStatus, DocumentRead, User, UserRole
 from app.dependencies import get_current_user
-from app.core.vectorstore import delete_by_file_hash, search_documents, count_total_embeddings
+from app.core.vectorstore import delete_by_file_hash, search_documents
 from app.core.cache import (
     get_cached_document_stats,
     set_cached_document_stats,
@@ -62,10 +62,8 @@ async def list_documents(
     # Build query
     query = select(Document)
 
-    # Filter by user (unless admin)
-    if current_user.role != UserRole.ADMIN:
-        query = query.where(Document.uploaded_by == current_user.id)
-    elif uploaded_by is not None:
+    # Filter by user (admin-only helper)
+    if current_user.role == UserRole.ADMIN and uploaded_by is not None:
         # Admin-only filter: filter by specific user
         query = query.where(Document.uploaded_by == uploaded_by)
 
@@ -143,22 +141,12 @@ async def get_document_stats(
         - by_status: Count by status
         - storage_used: Total storage in bytes
     """
-    is_admin = current_user.role == UserRole.ADMIN
-    cache_hit = await get_cached_document_stats(
-        None if is_admin else current_user.id,
-        is_admin=is_admin,
-    )
+    cache_hit = await get_cached_document_stats(None, is_admin=True)
     if cache_hit:
         return cache_hit
 
-    filters = []
-    if not is_admin:
-        filters.append(Document.uploaded_by == current_user.id)
-
     status_counts = {status.value: 0 for status in DocumentStatus}
     status_query = select(Document.status, func.count()).group_by(Document.status)
-    if filters:
-        status_query = status_query.where(*filters)
 
     result = await session.execute(status_query)
     for status, count in result.all():
@@ -166,21 +154,13 @@ async def get_document_stats(
         status_counts[key] = count
 
     total_query = select(func.count()).select_from(Document)
-    if filters:
-        total_query = total_query.where(*filters)
     total_docs = (await session.execute(total_query)).scalar_one() or 0
 
     storage_query = select(func.coalesce(func.sum(Document.file_size), 0)).select_from(Document)
-    if filters:
-        storage_query = storage_query.where(*filters)
     total_storage = (await session.execute(storage_query)).scalar_one() or 0
 
-    if is_admin:
-        total_chunks = await count_total_embeddings()
-    else:
-        chunk_query = select(func.coalesce(func.sum(Document.chunk_count), 0)).select_from(Document)
-        chunk_query = chunk_query.where(Document.uploaded_by == current_user.id)
-        total_chunks = (await session.execute(chunk_query)).scalar_one() or 0
+    chunk_query = select(func.coalesce(func.sum(Document.chunk_count), 0)).select_from(Document)
+    total_chunks = (await session.execute(chunk_query)).scalar_one() or 0
 
     payload = {
         "total_documents": total_docs,
@@ -190,11 +170,7 @@ async def get_document_stats(
         "storage_used_mb": round(total_storage / 1024 / 1024, 2) if total_storage else 0,
     }
 
-    await set_cached_document_stats(
-        None if is_admin else current_user.id,
-        is_admin=is_admin,
-        data=payload,
-    )
+    await set_cached_document_stats(None, is_admin=True, data=payload)
 
     return payload
 
@@ -218,13 +194,6 @@ async def get_document(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
-        )
-
-    # Check access
-    if current_user.role != UserRole.ADMIN and document.uploaded_by != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied",
         )
 
     return document
@@ -308,35 +277,8 @@ async def semantic_search(
     Returns:
         List of matching chunks with scores and metadata
     """
-    # For regular users, we'd ideally filter by their documents
-    # For now, search all documents (can be enhanced later)
-
-    # If not admin, get user's file hashes to filter
-    filter_dict = None
-    if current_user.role != UserRole.ADMIN:
-        # Get user's document file hashes
-        statement = select(Document.file_hash).where(Document.uploaded_by == current_user.id)
-        result = await session.execute(statement)
-        user_file_hashes = result.scalars().all()
-
-        if not user_file_hashes:
-            return []  # User has no documents
-
-        # ChromaDB filter - match any of user's file hashes
-        # Note: This might need adjustment based on ChromaDB's filter syntax
-        # For now, we'll search all and filter results after
-        filter_dict = None  # TODO: Implement proper ChromaDB filtering
-
-    # Perform search
-    results = await search_documents(query=query, k=k, filter=filter_dict)
-
-    # Filter results by user if not admin
-    if current_user.role != UserRole.ADMIN:
-        user_file_hashes_set = set(user_file_hashes)
-        results = [
-            r for r in results
-            if r.get("metadata", {}).get("file_hash") in user_file_hashes_set
-        ]
+    # Search across all documents for all users
+    results = await search_documents(query=query, k=k, filter=None)
 
     return {
         "query": query,

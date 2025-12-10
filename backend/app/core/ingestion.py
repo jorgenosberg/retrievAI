@@ -89,6 +89,18 @@ def add_hash_to_chunks(documents: List[Document], file_hash: str) -> List[Docume
     return documents
 
 
+def cleanup_uploaded_file(file_path: Path) -> None:
+    """
+    Remove the uploaded file from disk after processing.
+    """
+    try:
+        if file_path.exists():
+            file_path.unlink()
+            logger.info("Deleted uploaded file %s", file_path)
+    except Exception as e:  # pragma: no cover - best-effort cleanup
+        logger.warning("Failed to delete uploaded file %s: %s", file_path, e)
+
+
 def safe_load_single_document(file_path: Path) -> Optional[List[Document]]:
     """
     Safely load a single document using appropriate loader.
@@ -344,6 +356,10 @@ async def process_single_document(
             "document_id": document_id,
             "error": str(e),
         }
+
+    finally:
+        # Always attempt to delete the uploaded file once processing is done
+        cleanup_uploaded_file(file_path)
 
 
 def is_supported_file_type(filename: str) -> bool:

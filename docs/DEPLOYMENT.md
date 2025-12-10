@@ -84,8 +84,8 @@ Required secrets for the deployment workflow:
 | `SSH_HOST` | IP/IPv6 of your VM (e.g., `2001:700:2:8200::2232`) |
 | `SSH_USER` | VM username (e.g., `ubuntu`) |
 | `SSH_PROXY_HOST` | Jump host hostname (e.g., `login.uio.no`) |
-| `SSH_PROXY_USER` | Jump host username (e.g., `jorgenao`) |
-| `SSH_KEY` | Private SSH key (used for BOTH jump and target) |
+| `SSH_PROXY_USER` | Jump host username (UiO username) |
+| `SSH_KEY` | Private SSH key (used for target via jump host) |
 | `OPENAI_API_KEY` | Your OpenAI API Key |
 | `POSTGRES_PASSWORD` | Secure password for the database |
 | `SECRET_KEY` | Secure random string for the app |
@@ -197,7 +197,6 @@ If you have a fully populated local database you want to clone:
    # Restart services
    docker compose -f docker-compose.prod.yml start backend worker
    ```
-```
 
 ---
 
@@ -206,4 +205,3 @@ If you have a fully populated local database you want to clone:
 - **ChromaDB Error**: Check if the volume mount path in `docker-compose.prod.yml` matches your VM path.
 - **Database Error**: Check `POSTGRES_PASSWORD` in secrets.
 - **NGINX Error**: Run `sudo nginx -t` to validate config.
-```

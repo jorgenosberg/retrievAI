@@ -11,8 +11,7 @@
 RAG-based document retrieval and chat application powered by LangChain.
 
 <p align="center">
-  <img src="docs/assets/retrievai-login-page.png" alt="Login" width="50%">
-  <img src="docs/assets/retrievai-chat-page.png" alt="Chat" width="50%">
+  <img src="docs/assets/retrievai-login-page.png" alt="Login" width="49%">&nbsp;<img src="docs/assets/retrievai-chat-page.png" alt="Chat" width="49%">
 </p>
 
 ## Stack

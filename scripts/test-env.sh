@@ -7,6 +7,16 @@ set -e
 
 COMPOSE_FILE="docker-compose.test.yml"
 PROJECT_NAME="retrievai-test"
+ENV_FILE=".env.test"
+
+# Build docker-compose command with optional env file
+compose_cmd() {
+    if [ -f "$ENV_FILE" ]; then
+        docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" --env-file "$ENV_FILE" "$@"
+    else
+        docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" "$@"
+    fi
+}
 
 # Colors for output
 RED='\033[0;31m'
@@ -47,7 +57,7 @@ start_env() {
     print_header "Starting Test Environment"
     check_env_file
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
+    compose_cmd up -d
 
     print_success "Test environment started"
     echo ""
@@ -63,7 +73,7 @@ start_env() {
 stop_env() {
     print_header "Stopping Test Environment"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down
+    compose_cmd down
 
     print_success "Test environment stopped"
 }
@@ -72,7 +82,7 @@ stop_env() {
 restart_env() {
     print_header "Restarting Test Environment"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" restart
+    compose_cmd restart
 
     print_success "Test environment restarted"
 }
@@ -84,7 +94,7 @@ reset_env() {
     read -p "This will delete all test data. Are you sure? (y/N) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down -v
+        compose_cmd down -v
         print_success "Test environment reset (all data deleted)"
     else
         print_warning "Reset cancelled"
@@ -96,9 +106,9 @@ show_logs() {
     SERVICE=${1:-}
 
     if [ -z "$SERVICE" ]; then
-        docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs -f
+        compose_cmd logs -f
     else
-        docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs -f "$SERVICE"
+        compose_cmd logs -f "$SERVICE"
     fi
 }
 
@@ -106,15 +116,14 @@ show_logs() {
 show_status() {
     print_header "Test Environment Status"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" ps
+    compose_cmd ps
 }
 
 # Run database migrations
 run_migrations() {
     print_header "Running Database Migrations"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" exec backend-test \
-        uv run alembic upgrade head
+    compose_cmd exec backend-test uv run alembic upgrade head
 
     print_success "Migrations completed"
 }
@@ -123,22 +132,21 @@ run_migrations() {
 shell_backend() {
     print_header "Opening Backend Shell"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" exec backend-test bash
+    compose_cmd exec backend-test bash
 }
 
 # Connect to the test database
 db_shell() {
     print_header "Opening Database Shell"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" exec postgres-test \
-        psql -U retrievai_test -d retrievai_test
+    compose_cmd exec postgres-test psql -U retrievai_test -d retrievai_test
 }
 
 # Build and start fresh
 build_env() {
     print_header "Building Test Environment"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" build --no-cache
+    compose_cmd build --no-cache
 
     print_success "Build completed"
 }
@@ -147,8 +155,7 @@ build_env() {
 seed_data() {
     print_header "Seeding Test Data"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" exec backend-test \
-        uv run --no-dev python -B scripts/seed_test_data.py
+    compose_cmd exec backend-test uv run --no-dev python -B scripts/seed_test_data.py
 
     print_success "Test data seeded"
 }
@@ -157,8 +164,7 @@ seed_data() {
 clear_data() {
     print_header "Clearing Test Data"
 
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" exec backend-test \
-        uv run --no-dev python scripts/seed_test_data.py --clear
+    compose_cmd exec backend-test uv run --no-dev python scripts/seed_test_data.py --clear
 
     print_success "Test data cleared"
 }

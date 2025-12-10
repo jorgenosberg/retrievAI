@@ -5,7 +5,7 @@ export const PREFERENCES_STORAGE_KEY = 'retrievai:prefs'
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   theme: 'system',
-  auto_send: false,
+  auto_send: true,
   show_sources: true,
   default_chat_model: 'gpt-4o-mini',
   use_personal_api_key: false,

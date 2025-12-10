@@ -5,12 +5,22 @@ import type { Source } from '@/types/chat'
 interface MessageContentProps {
   content: string
   sources?: Source[]
+  showCursor?: boolean
 }
 
-export function MessageContent({ content, sources }: MessageContentProps) {
+const StreamingCursor = () => (
+  <span className="ml-0.5 inline-block h-4 w-1 animate-pulse rounded-full bg-primary-600 align-middle dark:bg-primary-400" />
+)
+
+export function MessageContent({ content, sources, showCursor }: MessageContentProps) {
   // If no sources, just render plain text
   if (!sources || sources.length === 0) {
-    return <div className="whitespace-pre-wrap">{content}</div>
+    return (
+      <div className="whitespace-pre-wrap">
+        {content}
+        {showCursor && <StreamingCursor />}
+      </div>
+    )
   }
 
   // Parse content to extract citations
@@ -27,6 +37,7 @@ export function MessageContent({ content, sources }: MessageContentProps) {
         }
         return null
       })}
+      {showCursor && <StreamingCursor />}
     </div>
   )
 }

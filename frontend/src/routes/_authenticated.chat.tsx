@@ -5,6 +5,7 @@ import { MessageContent } from "@/components/MessageContent";
 import { SourceContextModal } from "@/components/SourceContextModal";
 import type { Source } from "@/types/chat";
 import { generateChatSessionId } from "@/lib/chatStorage";
+import { getStoredPreferences } from "@/lib/preferencesStorage";
 
 export const Route = createFileRoute("/_authenticated/chat")({
   validateSearch: (search) => ({
@@ -81,7 +82,9 @@ function MessageUtilities({
   onCopy: () => void;
   onExpandSource?: (source: Source) => void;
 }) {
-  const [showSources, setShowSources] = useState(false);
+  const [showSources, setShowSources] = useState(
+    () => getStoredPreferences().show_sources
+  );
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -285,12 +288,15 @@ function ChatPage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Submit on Enter (without Shift)
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key !== "Enter") return;
+
+    const { auto_send } = getStoredPreferences();
+    if (auto_send && !e.shiftKey) {
+      // Auto-send enabled: Enter sends, Shift+Enter is newline
       e.preventDefault();
       handleSubmit(e);
     }
-    // Allow Shift+Enter to add a new line (default textarea behavior)
+    // Auto-send disabled: Enter is newline (default), button sends
   };
 
   const handleNewChat = () => {
@@ -403,13 +409,11 @@ function ChatPage() {
                       </div>
                     )}
                     {streamingMessage && (
-                      <div className="flex items-start">
-                        <MessageContent
-                          content={streamingMessage}
-                          sources={streamingSources}
-                        />
-                        <span className="ml-1 mt-1 inline-block h-4 w-1 animate-pulse rounded-full bg-primary-600 dark:bg-primary-400" />
-                      </div>
+                      <MessageContent
+                        content={streamingMessage}
+                        sources={streamingSources}
+                        showCursor
+                      />
                     )}
                   </div>
                 </div>
@@ -477,7 +481,9 @@ function ChatPage() {
               </button>
             </div>
             <p className="text-xs text-gray-500 dark:text-zinc-400">
-              Press Enter to send. Use Shift + Enter for a new line.
+              {getStoredPreferences().auto_send
+                ? "Enter to send, Shift + Enter for new line."
+                : "Enter for new line, click Send to submit."}
             </p>
           </form>
         </div>

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { apiClient, type User } from "@/lib/api";
+import { apiClient, type User, type AuthorizedEmail } from "@/lib/api";
 import {
   DEFAULT_USER_PREFERENCES,
   clearStoredPreferences,
@@ -113,7 +113,7 @@ function SettingsPage() {
     email: "",
     password: "",
     full_name: "",
-    role: "user",
+    role: "USER",
     is_active: true,
   });
   const [cacheSnapshot, setCacheSnapshot] = useState<CacheSnapshot>(() =>
@@ -126,12 +126,16 @@ function SettingsPage() {
   const [pendingEmbeddingModel, setPendingEmbeddingModel] = useState<
     string | null
   >(null);
+  const [addUserMode, setAddUserMode] = useState<"direct" | "authorize">(
+    "direct"
+  );
+  const [authorizeEmailInput, setAuthorizeEmailInput] = useState("");
 
   const { data: currentUser } = useQuery({
     queryKey: ["current-user"],
     queryFn: () => apiClient.getCurrentUser(),
   });
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = currentUser?.role?.toLowerCase() === "admin";
 
   const { data: userSettings, isLoading: loadingUserSettings } =
     useQuery<UserSettingsResponse>({
@@ -184,6 +188,24 @@ function SettingsPage() {
     queryFn: () => apiClient.getUsers(),
     enabled: isAdmin,
   });
+
+  const { data: authorizedEmails, isLoading: loadingAuthorizedEmails } =
+    useQuery<AuthorizedEmail[]>({
+      queryKey: ["authorized-emails"],
+      queryFn: () => apiClient.getAuthorizedEmails(),
+      enabled: isAdmin,
+    });
+
+  // Filter authorized emails to only show those who haven't registered yet
+  const pendingAuthorizedEmails = useMemo(() => {
+    if (!authorizedEmails || !users) return [];
+    const registeredEmails = new Set(
+      users.map((u: User) => u.email.toLowerCase())
+    );
+    return authorizedEmails.filter(
+      (ae: AuthorizedEmail) => !registeredEmails.has(ae.email.toLowerCase())
+    );
+  }, [authorizedEmails, users]);
 
   useEffect(() => {
     setCacheSnapshot(createCacheSnapshot());
@@ -267,10 +289,25 @@ function SettingsPage() {
         email: "",
         password: "",
         full_name: "",
-        role: "user",
+        role: "USER",
         is_active: true,
       });
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+
+  const addAuthorizedEmailMutation = useMutation({
+    mutationFn: (email: string) => apiClient.addAuthorizedEmail(email),
+    onSuccess: () => {
+      setAuthorizeEmailInput("");
+      queryClient.invalidateQueries({ queryKey: ["authorized-emails"] });
+    },
+  });
+
+  const removeAuthorizedEmailMutation = useMutation({
+    mutationFn: (emailId: number) => apiClient.removeAuthorizedEmail(emailId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["authorized-emails"] });
     },
   });
 
@@ -1074,8 +1111,8 @@ function SettingsPage() {
                               className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-2 py-1 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none disabled:opacity-50"
                               disabled={user.id === currentUser?.id}
                             >
-                              <option value="user">User</option>
-                              <option value="admin">Admin</option>
+                              <option value="USER">User</option>
+                              <option value="ADMIN">Admin</option>
                             </select>
                           </td>
                           <td className="px-4 py-3">
@@ -1114,95 +1151,215 @@ function SettingsPage() {
 
               <div className="mt-6 border-t border-gray-200 dark:border-zinc-700 pt-4">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-zinc-300">
-                  Invite user
+                  Add user
                 </h3>
-                <form
-                  className="mt-3 grid gap-4 md:grid-cols-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    createUserMutation.mutate({
-                      email: newUserForm.email,
-                      password: newUserForm.password,
-                      full_name: newUserForm.full_name || undefined,
-                      role: newUserForm.role,
-                      is_active: newUserForm.is_active,
-                    });
-                  }}
-                >
-                  <input
-                    type="email"
-                    required
-                    placeholder="Email"
-                    value={newUserForm.email}
-                    onChange={(e) =>
-                      setNewUserForm((prev) => ({
-                        ...prev,
-                        email: e.target.value,
-                      }))
-                    }
-                    className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
-                  />
-                  <input
-                    type="password"
-                    required
-                    placeholder="Temporary password"
-                    value={newUserForm.password}
-                    onChange={(e) =>
-                      setNewUserForm((prev) => ({
-                        ...prev,
-                        password: e.target.value,
-                      }))
-                    }
-                    className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Full name (optional)"
-                    value={newUserForm.full_name}
-                    onChange={(e) =>
-                      setNewUserForm((prev) => ({
-                        ...prev,
-                        full_name: e.target.value,
-                      }))
-                    }
-                    className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
-                  />
-                  <select
-                    value={newUserForm.role}
-                    onChange={(e) =>
-                      setNewUserForm((prev) => ({
-                        ...prev,
-                        role: e.target.value,
-                      }))
-                    }
-                    className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
+                <p className="text-xs text-gray-500 dark:text-zinc-500 mt-1">
+                  Create a user directly with a temporary password, or authorize
+                  an email for self-registration.
+                </p>
+
+                {/* Mode Toggle */}
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAddUserMode("direct")}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      addUserMode === "direct"
+                        ? "bg-primary-600 text-white dark:bg-primary-500"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                    }`}
                   >
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                  <PreferenceToggle
-                    label="Active immediately"
-                    hideDescription
-                    checked={newUserForm.is_active}
-                    onChange={(checked) =>
-                      setNewUserForm((prev) => ({
-                        ...prev,
-                        is_active: checked,
-                      }))
-                    }
-                  />
-                  <div className="md:col-span-2">
-                    <button
-                      type="submit"
-                      className={`inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400 disabled:opacity-50 ${createUserMutation.isPending ? "cursor-progress" : "cursor-pointer"} disabled:cursor-not-allowed`}
-                      disabled={createUserMutation.isPending}
+                    Create with password
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddUserMode("authorize")}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      addUserMode === "authorize"
+                        ? "bg-primary-600 text-white dark:bg-primary-500"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                    }`}
+                  >
+                    Authorize for self-registration
+                  </button>
+                </div>
+
+                {/* Direct Creation Form */}
+                {addUserMode === "direct" && (
+                  <form
+                    className="mt-4 grid gap-4 md:grid-cols-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      createUserMutation.mutate({
+                        email: newUserForm.email,
+                        password: newUserForm.password,
+                        full_name: newUserForm.full_name || undefined,
+                        role: newUserForm.role,
+                        is_active: newUserForm.is_active,
+                      });
+                    }}
+                  >
+                    <input
+                      type="email"
+                      required
+                      placeholder="Email"
+                      value={newUserForm.email}
+                      onChange={(e) =>
+                        setNewUserForm((prev) => ({
+                          ...prev,
+                          email: e.target.value,
+                        }))
+                      }
+                      className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
+                    />
+                    <input
+                      type="password"
+                      required
+                      placeholder="Temporary password"
+                      value={newUserForm.password}
+                      onChange={(e) =>
+                        setNewUserForm((prev) => ({
+                          ...prev,
+                          password: e.target.value,
+                        }))
+                      }
+                      className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Full name (optional)"
+                      value={newUserForm.full_name}
+                      onChange={(e) =>
+                        setNewUserForm((prev) => ({
+                          ...prev,
+                          full_name: e.target.value,
+                        }))
+                      }
+                      className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
+                    />
+                    <select
+                      value={newUserForm.role}
+                      onChange={(e) =>
+                        setNewUserForm((prev) => ({
+                          ...prev,
+                          role: e.target.value,
+                        }))
+                      }
+                      className="rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
                     >
-                      {createUserMutation.isPending
-                        ? "Creating..."
-                        : "Create user"}
-                    </button>
+                      <option value="USER">User</option>
+                      <option value="ADMIN">Admin</option>
+                    </select>
+                    <PreferenceToggle
+                      label="Account enabled"
+                      description="User can sign in immediately."
+                      checked={newUserForm.is_active}
+                      onChange={(checked) =>
+                        setNewUserForm((prev) => ({
+                          ...prev,
+                          is_active: checked,
+                        }))
+                      }
+                    />
+                    <div className="md:col-span-2">
+                      <button
+                        type="submit"
+                        className={`inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400 disabled:opacity-50 ${createUserMutation.isPending ? "cursor-progress" : "cursor-pointer"} disabled:cursor-not-allowed`}
+                        disabled={createUserMutation.isPending}
+                      >
+                        {createUserMutation.isPending
+                          ? "Creating..."
+                          : "Create user"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Authorize Email Form */}
+                {addUserMode === "authorize" && (
+                  <div className="mt-4 space-y-4">
+                    <form
+                      className="flex gap-3"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        if (authorizeEmailInput.trim()) {
+                          addAuthorizedEmailMutation.mutate(
+                            authorizeEmailInput.trim()
+                          );
+                        }
+                      }}
+                    >
+                      <input
+                        type="email"
+                        required
+                        placeholder="Email to authorize"
+                        value={authorizeEmailInput}
+                        onChange={(e) => setAuthorizeEmailInput(e.target.value)}
+                        className="flex-1 rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 px-3 py-2 text-sm focus:border-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-0 dark:focus:border-primary-500 dark:focus:ring-primary-500 outline-none"
+                      />
+                      <button
+                        type="submit"
+                        className={`inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400 disabled:opacity-50 ${addAuthorizedEmailMutation.isPending ? "cursor-progress" : "cursor-pointer"} disabled:cursor-not-allowed`}
+                        disabled={addAuthorizedEmailMutation.isPending}
+                      >
+                        {addAuthorizedEmailMutation.isPending
+                          ? "Adding..."
+                          : "Authorize"}
+                      </button>
+                    </form>
+
+                    <p className="text-xs text-gray-500 dark:text-zinc-500">
+                      Authorized emails can self-register at{" "}
+                      <code className="bg-gray-100 dark:bg-zinc-800 px-1 py-0.5 rounded">
+                        /register
+                      </code>
+                      . They will choose their own password during registration.
+                    </p>
+
+                    {/* Authorized Emails List */}
+                    {loadingAuthorizedEmails || loadingUsers ? (
+                      <div className="h-20 animate-pulse rounded bg-gray-100 dark:bg-zinc-800" />
+                    ) : pendingAuthorizedEmails.length > 0 ? (
+                      <div className="rounded border border-gray-200 dark:border-zinc-700">
+                        <div className="px-3 py-2 bg-gray-50 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700">
+                          <span className="text-xs font-medium text-gray-600 dark:text-zinc-400">
+                            Pending registrations ({pendingAuthorizedEmails.length})
+                          </span>
+                        </div>
+                        <ul className="divide-y divide-gray-200 dark:divide-zinc-700">
+                          {pendingAuthorizedEmails.map((authEmail: AuthorizedEmail) => (
+                            <li
+                              key={authEmail.id}
+                              className="flex items-center justify-between px-3 py-2"
+                            >
+                              <span className="text-sm text-gray-900 dark:text-zinc-100">
+                                {authEmail.email}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeAuthorizedEmailMutation.mutate(
+                                    authEmail.id
+                                  )
+                                }
+                                disabled={
+                                  removeAuthorizedEmailMutation.isPending
+                                }
+                                className="text-xs font-medium text-danger-600 dark:text-danger-400 hover:text-danger-800 dark:hover:text-danger-300 disabled:opacity-50"
+                              >
+                                Revoke
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-zinc-500 italic">
+                        No emails pending registration.
+                      </p>
+                    )}
                   </div>
-                </form>
+                )}
               </div>
             </div>
           </>

@@ -17,6 +17,11 @@ export interface User {
   created_at: string
 }
 
+export interface AuthorizedEmail {
+  id: number
+  email: string
+}
+
 class ApiClient {
   private client: AxiosInstance
   private accessToken: string | null = null
@@ -193,6 +198,9 @@ class ApiClient {
   }
 
   async login(email: string, password: string) {
+    // Clear any cached user from previous session before logging in
+    resetAuthCache()
+
     const response = await this.client.post<AuthTokens>('/auth/login', {
       email,
       password,
@@ -457,6 +465,21 @@ class ApiClient {
 
   async getSystemStats() {
     const response = await this.client.get('/admin/system/stats')
+    return response.data
+  }
+
+  async getAuthorizedEmails() {
+    const response = await this.client.get('/admin/authorized-emails')
+    return response.data
+  }
+
+  async addAuthorizedEmail(email: string) {
+    const response = await this.client.post('/admin/authorized-emails', { email })
+    return response.data
+  }
+
+  async removeAuthorizedEmail(emailId: number) {
+    const response = await this.client.delete(`/admin/authorized-emails/${emailId}`)
     return response.data
   }
 

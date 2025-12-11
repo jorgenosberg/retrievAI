@@ -3,11 +3,11 @@ Backfill document file sizes for legacy rows that are missing file_size.
 
 We no longer have the original uploads on disk in prod, but we can derive an
 estimated size from the chunk contents stored in Chroma. This script sums the
-byte length of all chunks for a document and writes that to file_size. It also
-updates chunk_count if it is zero/missing.
+UTF-8 byte length of all chunks for a document and writes that to file_size.
+It also updates chunk_count if it is zero/missing.
 
-Usage (from repo root, inside backend venv/container):
-    python -m backend.scripts.backfill_file_sizes
+Usage (inside backend container/venv):
+    uv run -m app.scripts.backfill_file_sizes
 """
 
 import asyncio

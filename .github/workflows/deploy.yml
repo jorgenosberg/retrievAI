@@ -10,11 +10,6 @@ on:
         type: choice
         options:
           - production
-      reset_db:
-        description: 'Reset Database (Wipe Data)'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   deploy:
@@ -46,7 +41,6 @@ jobs:
           DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
           # Optional: Add other secrets here
           JUMP_HOST_PASSWORD: ${{ secrets.JUMP_HOST_PASSWORD }}
-          RESET_DB: ${{ inputs.reset_db }}
         run: |
           # Install sshpass
           sudo apt-get update
@@ -163,14 +157,6 @@ jobs:
           
           # Deploy with Docker Compose
           echo "Starting services..."
-          
-          # Reset DB if requested
-          echo "RESET_DB flag is: $RESET_DB"
-          if [ "$RESET_DB" = "true" ]; then
-            echo "Resetting database volume..."
-            docker compose -f docker-compose.prod.yml down -v
-          fi
-
           if ! docker compose -f docker-compose.prod.yml up -d --build --remove-orphans; then
             echo "Deployment failed. Printing ChromaDB logs..."
             docker compose -f docker-compose.prod.yml logs chromadb
@@ -203,5 +189,4 @@ jobs:
              SECRET_KEY='$SECRET_KEY' \
              DEPLOY_PATH='$DEPLOY_PATH' \
              DOMAIN_NAME='$DOMAIN_NAME' \
-             RESET_DB='${{ inputs.reset_db }}' \
              bash -s" < deploy_script.sh

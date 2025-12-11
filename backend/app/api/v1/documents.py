@@ -264,6 +264,86 @@ async def delete_document(
     }
 
 
+@router.post("/batch-delete")
+async def batch_delete_documents(
+    document_ids: List[int],
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Delete multiple documents at once.
+
+    This will for each document:
+    1. Delete all chunks from ChromaDB
+    2. Delete the document record from PostgreSQL
+    3. Remove the physical file from disk
+
+    Returns:
+        - deleted: List of successfully deleted document IDs
+        - failed: List of document IDs that failed to delete with reasons
+        - total_chunks_deleted: Total number of chunks removed from vectorstore
+    """
+    import logging
+
+    deleted = []
+    failed = []
+    total_chunks_deleted = 0
+
+    # Fetch all documents in one query
+    statement = select(Document).where(Document.id.in_(document_ids))
+    result = await session.execute(statement)
+    documents = {doc.id: doc for doc in result.scalars().all()}
+
+    for doc_id in document_ids:
+        document = documents.get(doc_id)
+
+        if not document:
+            failed.append({"id": doc_id, "reason": "Document not found"})
+            continue
+
+        # Check access
+        if current_user.role != UserRole.ADMIN and document.uploaded_by != current_user.id:
+            failed.append({"id": doc_id, "reason": "Access denied"})
+            continue
+
+        try:
+            # Delete from ChromaDB
+            chunks_deleted = await delete_by_file_hash(document.file_hash)
+            total_chunks_deleted += chunks_deleted
+
+            # Delete physical file
+            file_path = settings.UPLOAD_DIR / document.file_hash
+            if file_path.exists():
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    logging.error(f"Failed to delete file {file_path}: {e}")
+
+            # Clear Redis task status keys
+            await clear_upload_task_status(document.file_hash)
+
+            # Delete from database
+            await session.delete(document)
+            deleted.append(doc_id)
+
+        except Exception as e:
+            logging.error(f"Failed to delete document {doc_id}: {e}")
+            failed.append({"id": doc_id, "reason": str(e)})
+
+    # Commit all deletions
+    await session.commit()
+
+    # Invalidate cache once for all deletions
+    if deleted:
+        await invalidate_document_stats_cache(current_user.id)
+
+    return {
+        "deleted": deleted,
+        "failed": failed,
+        "total_chunks_deleted": total_chunks_deleted,
+    }
+
+
 @router.post("/search")
 async def semantic_search(
     query: str = Query(..., min_length=1),

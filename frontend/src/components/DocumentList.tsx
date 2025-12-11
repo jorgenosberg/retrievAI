@@ -14,6 +14,9 @@ import {
 
 interface DocumentListProps {
   onDocumentClick?: (document: Document) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<number>;
+  onSelectionChange?: (ids: Set<number>) => void;
 }
 
 type SortOption =
@@ -39,7 +42,12 @@ const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
 
 const DEFAULT_SORT: SortOption = "created_desc";
 
-export function DocumentList({ onDocumentClick }: DocumentListProps) {
+export function DocumentList({
+  onDocumentClick,
+  selectionMode = false,
+  selectedIds = new Set(),
+  onSelectionChange,
+}: DocumentListProps) {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | "">("");
@@ -154,6 +162,27 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
   }, [documents, sortOption]);
 
   const deleteMutation = useDeleteDocument();
+
+  const toggleSelection = (id: number) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    onSelectionChange?.(newSet);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === sortedDocuments.length) {
+      onSelectionChange?.(new Set());
+    } else {
+      onSelectionChange?.(new Set(sortedDocuments.map((d) => d.id)));
+    }
+  };
+
+  const allSelected = sortedDocuments.length > 0 && selectedIds.size === sortedDocuments.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < sortedDocuments.length;
 
   const handleDelete = async (id: number, filename: string) => {
     if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
@@ -729,13 +758,47 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
       {/* Document List */}
       {documents.length > 0 && (
         <div className="bg-white dark:bg-zinc-900 rounded-lg shadow overflow-hidden">
+          {/* Select All Header - only visible in selection mode */}
+          {selectionMode && sortedDocuments.length > 0 && (
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected;
+                  }}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-gray-300 dark:border-zinc-600 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">
+                  {selectedIds.size > 0
+                    ? `${selectedIds.size} selected`
+                    : "Select all"}
+                </span>
+              </label>
+            </div>
+          )}
           <div className="divide-y divide-gray-200 dark:divide-zinc-700">
             {sortedDocuments.map((doc: Document) => (
               <div
                 key={doc.id}
-                className="p-4 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+                className={`p-4 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors ${
+                  selectionMode && selectedIds.has(doc.id) ? "bg-primary-50 dark:bg-primary-900/20" : ""
+                }`}
               >
                 <div className="flex items-center space-x-4">
+                  {/* Checkbox - only visible in selection mode */}
+                  {selectionMode && (
+                    <div className="shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(doc.id)}
+                        onChange={() => toggleSelection(doc.id)}
+                        className="h-4 w-4 rounded border-gray-300 dark:border-zinc-600 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                      />
+                    </div>
+                  )}
                   {/* File Icon */}
                   <div className="shrink-0">
                     <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">

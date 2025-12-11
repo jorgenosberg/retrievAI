@@ -10,6 +10,7 @@ import type {
   UploadResponse,
   UploadStatus,
   DeleteDocumentResponse,
+  BatchDeleteResponse,
   SupportedTypes,
   SearchResult,
 } from '@/types/document'
@@ -145,5 +146,18 @@ export function useDeleteDocument() {
 export function useSearchDocuments() {
   return useMutation<SearchResult, Error, { query: string; k?: number }>({
     mutationFn: ({ query, k = 10 }) => apiClient.searchDocuments(query, k),
+  })
+}
+
+// Batch delete documents mutation
+export function useBatchDeleteDocuments() {
+  const queryClient = useQueryClient()
+
+  return useMutation<BatchDeleteResponse, Error, number[]>({
+    mutationFn: (ids) => apiClient.batchDeleteDocuments(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: documentKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: documentKeys.stats() })
+    },
   })
 }

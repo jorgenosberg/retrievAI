@@ -270,6 +270,11 @@ class ApiClient {
     return response.data
   }
 
+  async batchDeleteDocuments(ids: number[]) {
+    const response = await this.client.post('/documents/batch-delete', ids)
+    return response.data
+  }
+
   async searchDocuments(query: string, k = 10) {
     const response = await this.client.post('/documents/search', null, {
       params: { query, k },

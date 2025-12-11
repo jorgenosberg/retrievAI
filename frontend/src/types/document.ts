@@ -63,6 +63,12 @@ export interface DeleteDocumentResponse {
   chunks_deleted: number;
 }
 
+export interface BatchDeleteResponse {
+  deleted: number[];
+  failed: Array<{ id: number; reason: string }>;
+  total_chunks_deleted: number;
+}
+
 export interface SearchResult {
   query: string;
   results: Array<{

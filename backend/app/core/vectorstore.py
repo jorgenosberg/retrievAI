@@ -34,19 +34,14 @@ def _cosine_relevance_score(distance: float) -> float:
 class RerankRetriever(BaseRetriever):
     """Wrap a vectorstore with a simple score-based rerank."""
 
-    def __init__(
-        self,
-        vectorstore: Chroma,
-        search_type: str,
-        search_kwargs: Dict[str, Any],
-        rerank_k: int,
-        keep_k: int,
-    ):
-        self.vectorstore = vectorstore
-        self.search_type = search_type
-        self.search_kwargs = search_kwargs
-        self.rerank_k = rerank_k
-        self.keep_k = keep_k
+    vectorstore: Any  # Chroma type, but Any to avoid Pydantic validation issues
+    search_type: str
+    search_kwargs: Dict[str, Any]
+    rerank_k: int
+    keep_k: int
+
+    class Config:
+        arbitrary_types_allowed = True
 
     async def _aget_relevant_documents(
         self, query: str

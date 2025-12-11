@@ -60,22 +60,17 @@ LOADER_MAPPING = {
 SUPPORTED_EXTENSIONS = set(LOADER_MAPPING.keys())
 
 
-def compute_file_hash(filename: str, identifier: str) -> str:
-    """
-    Compute MD5 hash for file identification.
-
-    Args:
-        filename: Original filename
-        identifier: Unique identifier (timestamp)
-
-    Returns:
-        MD5 hash string
-    """
-    hash_input = f"{filename}-{identifier}"
-    return hashlib.md5(hash_input.encode('utf-8')).hexdigest()
+def compute_file_hash(file_bytes: bytes) -> str:
+    """Content-based MD5 hash for deduplication."""
+    return hashlib.md5(file_bytes).hexdigest()
 
 
-def add_hash_to_chunks(documents: List[Document], file_hash: str) -> List[Document]:
+def add_hash_to_chunks(
+    documents: List[Document],
+    file_hash: str,
+    document_id: Optional[int] = None,
+    filename: Optional[str] = None,
+) -> List[Document]:
     """
     Add file hash to metadata of each document chunk.
 
@@ -88,6 +83,10 @@ def add_hash_to_chunks(documents: List[Document], file_hash: str) -> List[Docume
     """
     for document in documents:
         document.metadata["file_hash"] = file_hash
+        if document_id is not None:
+            document.metadata["document_id"] = document_id
+        if filename:
+            document.metadata["filename"] = filename
     return documents
 
 
@@ -276,6 +275,16 @@ async def process_single_document(
         Dictionary with processing results
     """
     try:
+        # Fetch original filename for metadata enrichment
+        orig_filename: Optional[str] = None
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(DBDocument).where(DBDocument.id == document_id)
+            )
+            db_doc_meta = result.scalar_one_or_none()
+            if db_doc_meta:
+                orig_filename = db_doc_meta.filename
+
         if progress_callback:
             await progress_callback(10, "Loading document...")
 
@@ -289,7 +298,7 @@ async def process_single_document(
             await progress_callback(30, f"Loaded {len(docs)} pages...")
 
         # Add file hash to all chunks
-        docs = add_hash_to_chunks(docs, file_hash)
+        docs = add_hash_to_chunks(docs, file_hash, document_id=document_id, filename=orig_filename)
 
         # Get chunking settings
         chunk_settings = await get_chunk_settings()

@@ -20,6 +20,24 @@ from app.core.markdown import normalize_markdown
 from app.core.ocr import get_pipeline
 
 logger = logging.getLogger(__name__)
+_LAYOUT_ACTIVATED = False
+
+
+def activate_layout():
+    """Activate pymupdf-layout if available to get layout-aware parsing."""
+    global _LAYOUT_ACTIVATED
+    if _LAYOUT_ACTIVATED:
+        return
+    try:
+        import pymupdf.layout as pymupdf_layout  # type: ignore
+
+        pymupdf_layout.activate()
+        _LAYOUT_ACTIVATED = True
+        logger.info("Activated pymupdf.layout for layout-aware PDF parsing.")
+    except ImportError:
+        logger.info("pymupdf-layout not installed; continuing without layout activation.")
+    except Exception as exc:  # pragma: no cover - best effort
+        logger.warning("pymupdf.layout activation failed: %s", exc)
 
 
 def ocr_fallback(file_path: str, page_number: int) -> str:
@@ -84,6 +102,7 @@ class PyMuPDF4LLMParser(BaseBlobParser):
         """Lazily parse the blob."""
         with blob.as_bytes_io() as file_path:  # type: ignore[attr-defined]
             try:
+                activate_layout()
                 # Convert PDF to Markdown with pymupdf4llm
                 markdown_pages = pymupdf4llm.to_markdown(file_path, page_chunks=self.page_chunks, **self.kwargs)
 

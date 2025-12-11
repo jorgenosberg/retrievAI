@@ -1,9 +1,5 @@
 """File upload API endpoints."""
 
-import hashlib
-from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,9 +51,8 @@ async def upload_file(
             detail=f"File too large. Maximum size: {settings.MAX_UPLOAD_SIZE / 1024 / 1024:.1f} MB",
         )
 
-    # Compute file hash
-    timestamp = datetime.utcnow().isoformat()
-    file_hash = compute_file_hash(file.filename, timestamp)
+    # Compute content-based file hash (dedupe identical uploads)
+    file_hash = compute_file_hash(file_content)
 
     # Check for duplicate
     from sqlmodel import select

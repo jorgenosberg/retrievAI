@@ -10,7 +10,7 @@ from app.db.session import get_session
 from app.db.models import Document, DocumentStatus, User
 from app.dependencies import get_current_user, get_arq_pool
 from app.core.ingestion import is_supported_file_type, get_supported_extensions, compute_file_hash
-from app.core.cache import invalidate_document_stats_cache
+from app.core.cache import invalidate_document_stats_cache, clear_upload_task_status
 
 settings = get_settings()
 router = APIRouter()
@@ -65,6 +65,10 @@ async def upload_file(
             status_code=status.HTTP_409_CONFLICT,
             detail="This file has already been uploaded",
         )
+
+    # Clear any stale Redis task status from previous uploads with same hash
+    # (e.g., if document was deleted but Redis keys remained)
+    await clear_upload_task_status(file_hash)
 
     # Save file to upload directory with original extension
     # Extract extension from filename

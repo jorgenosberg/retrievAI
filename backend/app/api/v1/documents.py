@@ -17,6 +17,7 @@ from app.core.cache import (
     get_cached_document_stats,
     set_cached_document_stats,
     invalidate_document_stats_cache,
+    clear_upload_task_status,
 )
 
 settings = get_settings()
@@ -247,6 +248,9 @@ async def delete_document(
             # Log but don't fail if file deletion fails
             import logging
             logging.error(f"Failed to delete file {file_path}: {e}")
+
+    # Clear Redis task status keys (prevents stale status if same file is re-uploaded)
+    await clear_upload_task_status(document.file_hash)
 
     # Delete from database
     await session.delete(document)

@@ -11,6 +11,11 @@ from app.config import get_settings
 
 settings = get_settings()
 
+# TTL for task status keys in Redis - auto-expire after 1 hour since they're
+# only needed during active upload/processing. Prevents Redis from accumulating
+# keys for every uploaded document.
+TASK_STATUS_TTL = 3600
+
 
 async def process_document_upload(
     ctx: Dict[str, Any],
@@ -36,13 +41,13 @@ async def process_document_upload(
 
     # Progress callback that updates Redis
     async def progress_callback(progress: int, message: str):
-        await ctx["redis"].set(f"task:upload:{file_hash}:progress", str(progress))
-        await ctx["redis"].set(f"task:upload:{file_hash}:message", message)
+        await ctx["redis"].set(f"task:upload:{file_hash}:progress", str(progress), ex=TASK_STATUS_TTL)
+        await ctx["redis"].set(f"task:upload:{file_hash}:message", message, ex=TASK_STATUS_TTL)
 
     try:
         # Update task status
-        await ctx["redis"].set(f"task:upload:{file_hash}:status", "running")
-        await ctx["redis"].set(f"task:upload:{file_hash}:progress", "0")
+        await ctx["redis"].set(f"task:upload:{file_hash}:status", "running", ex=TASK_STATUS_TTL)
+        await ctx["redis"].set(f"task:upload:{file_hash}:progress", "0", ex=TASK_STATUS_TTL)
 
         # Process document (load, chunk, embed) - this handles DB updates internally
         result = await process_single_document(
@@ -53,15 +58,15 @@ async def process_document_upload(
         )
 
         # Update task status
-        await ctx["redis"].set(f"task:upload:{file_hash}:status", "completed")
-        await ctx["redis"].set(f"task:upload:{file_hash}:progress", "100")
+        await ctx["redis"].set(f"task:upload:{file_hash}:status", "completed", ex=TASK_STATUS_TTL)
+        await ctx["redis"].set(f"task:upload:{file_hash}:progress", "100", ex=TASK_STATUS_TTL)
 
         return result
 
     except Exception as e:
         # Update task status (DB is updated inside process_single_document)
-        await ctx["redis"].set(f"task:upload:{file_hash}:status", "failed")
-        await ctx["redis"].set(f"task:upload:{file_hash}:error", str(e))
+        await ctx["redis"].set(f"task:upload:{file_hash}:status", "failed", ex=TASK_STATUS_TTL)
+        await ctx["redis"].set(f"task:upload:{file_hash}:error", str(e), ex=TASK_STATUS_TTL)
 
         return {
             "success": False,

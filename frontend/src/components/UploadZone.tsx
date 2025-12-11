@@ -79,11 +79,18 @@ export function UploadZone() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploads]);
 
-  // Stop polling when this component unmounts (e.g., navigating away) to avoid background requests
+  // On unmount, only clear polling for uploads that are already terminal (completed/failed).
+  // Keep polling for uploads still processing so their cache invalidation fires when done.
   useEffect(() => {
     return () => {
-      pollIntervals.forEach((intervalId) => clearInterval(intervalId));
-      pollIntervals.clear();
+      pollIntervals.forEach((intervalId, uploadId) => {
+        const upload = uploadStore.uploads.get(uploadId);
+        if (upload?.status === "completed" || upload?.status === "failed") {
+          clearInterval(intervalId);
+          pollIntervals.delete(uploadId);
+        }
+        // If still processing, let the interval continue running
+      });
     };
   }, []);
 

@@ -103,6 +103,7 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
     isLoading,
     isFetching,
     error,
+    refetch,
   } = useDocuments(page, pageSize, filters);
 
   useEffect(() => {
@@ -629,17 +630,32 @@ export function DocumentList({ onDocumentClick }: DocumentListProps) {
               )}
             </div>
 
-            {/* Results count and loading indicator */}
+            {/* Results count, refresh button, and loading indicator */}
             <div className="flex items-center gap-3">
               <span className="text-gray-600 dark:text-zinc-400">
                 {sortedDocuments.length} result{sortedDocuments.length !== 1 ? "s" : ""}
               </span>
-              {isFetching && (
-                <span className="inline-flex items-center text-xs text-gray-400 dark:text-zinc-500">
-                  <span className="mr-1 h-2.5 w-2.5 animate-spin rounded-full border-2 border-primary-400 dark:border-primary-500 border-t-transparent" />
-                  Updating
-                </span>
-              )}
+              <button
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className={`inline-flex items-center gap-1 text-xs text-gray-500 dark:text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50 ${isFetching ? "cursor-progress" : "cursor-pointer"}`}
+                title="Refresh document list"
+              >
+                <svg
+                  className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                {isFetching ? "Updating" : "Refresh"}
+              </button>
             </div>
           </div>
         </div>

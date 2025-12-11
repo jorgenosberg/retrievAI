@@ -37,3 +37,21 @@ async def invalidate_document_stats_cache(user_id: Optional[int] = None) -> None
     """Drop cached stats so next request recomputes them."""
     redis = await get_arq_pool()
     await redis.delete(_DOCUMENT_STATS_KEY)
+
+
+async def clear_upload_task_status(file_hash: str) -> None:
+    """
+    Clear Redis keys tracking upload/processing status for a file hash.
+
+    Call this when:
+    - Deleting a document (prevents stale status if same file is re-uploaded)
+    - Starting a new upload (clears any leftover state from previous attempts)
+    """
+    redis = await get_arq_pool()
+    keys = [
+        f"task:upload:{file_hash}:status",
+        f"task:upload:{file_hash}:progress",
+        f"task:upload:{file_hash}:message",
+        f"task:upload:{file_hash}:error",
+    ]
+    await redis.delete(*keys)

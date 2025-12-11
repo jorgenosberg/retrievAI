@@ -51,6 +51,7 @@ export function useDocuments(
     queryFn: () => apiClient.getDocuments(page, pageSize, filters),
     staleTime: 1000 * 60 * 30, // 30 minutes
     gcTime: 1000 * 60 * 60 * 24,
+    refetchOnMount: 'always', // Always refetch when navigating to page (shows cached data while fetching)
     placeholderData: (previousData) => previousData,
   })
 }

@@ -889,7 +889,7 @@ function SettingsPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <NumberField
                         label="Top K"
-                        value={adminForm.vectorstore?.k ?? 4}
+                        value={adminForm.vectorstore?.k ?? 5}
                         onChange={(value) =>
                           setAdminForm((prev) =>
                             prev
@@ -941,6 +941,79 @@ function SettingsPage() {
                         }
                         options={searchTypeOptions}
                         description="Algorithm for document retrieval"
+                      />
+                      <NumberField
+                        label="Score threshold (for similarity_score_threshold)"
+                        step="0.01"
+                        value={adminForm.vectorstore?.score_threshold ?? 0.2}
+                        onChange={(value) =>
+                          setAdminForm((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  vectorstore: {
+                                    ...prev.vectorstore,
+                                    score_threshold: value,
+                                  },
+                                }
+                              : prev
+                          )
+                        }
+                        description="Keep results with similarity score at or above this value."
+                      />
+                      <PreferenceToggle
+                        label="Enable rerank"
+                        description="Rerank initial hits before passing to the model."
+                        checked={adminForm.vectorstore?.rerank_enabled ?? true}
+                        onChange={(checked) =>
+                          setAdminForm((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  vectorstore: {
+                                    ...prev.vectorstore,
+                                    rerank_enabled: checked,
+                                  },
+                                }
+                              : prev
+                          )
+                        }
+                      />
+                      <NumberField
+                        label="Rerank candidates (rerank_k)"
+                        value={adminForm.vectorstore?.rerank_k ?? 20}
+                        onChange={(value) =>
+                          setAdminForm((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  vectorstore: {
+                                    ...prev.vectorstore,
+                                    rerank_k: value,
+                                  },
+                                }
+                              : prev
+                          )
+                        }
+                        description="How many hits to fetch and score before reranking."
+                      />
+                      <NumberField
+                        label="Keep after rerank (rerank_keep_k)"
+                        value={adminForm.vectorstore?.rerank_keep_k ?? (adminForm.vectorstore?.k ?? 5)}
+                        onChange={(value) =>
+                          setAdminForm((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  vectorstore: {
+                                    ...prev.vectorstore,
+                                    rerank_keep_k: value,
+                                  },
+                                }
+                              : prev
+                          )
+                        }
+                        description="How many reranked hits to return to the model."
                       />
                     </div>
                   </fieldset>

@@ -79,9 +79,15 @@ DEFAULT_CHAT = {
 }
 
 DEFAULT_VECTORSTORE = {
-    "k": 4,
+    "k": 5,
     "fetch_k": 20,
     "search_type": "similarity",
+    # Used when search_type == "similarity_score_threshold"
+    "score_threshold": 0.2,
+    # Rerank settings
+    "rerank_enabled": True,
+    "rerank_k": 20,      # initial candidates to score
+    "rerank_keep_k": 5,  # final docs to keep (defaults to k)
 }
 
 

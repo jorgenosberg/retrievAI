@@ -87,6 +87,7 @@ def add_hash_to_chunks(
             document.metadata["document_id"] = document_id
         if filename:
             document.metadata["filename"] = filename
+            document.metadata["title"] = filename
     return documents
 
 

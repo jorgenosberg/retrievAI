@@ -6,6 +6,11 @@ RAG-based document retrieval and chat application powered by LangChain.
 
 RetrievAI enables you to upload documents and chat with them using AI-powered retrieval augmented generation (RAG). The system processes your documents, creates vector embeddings, and provides accurate, context-aware responses.
 
+<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+<iframe src="https://www.youtube.com/embed/B8lObw2PcWk?si=xCgYQLsBUIGfETa7" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+</div>
+Iframe not loading? [Watch the video here](https://youtu.be/B8lObw2PcWk)
+
 ## Features
 
 - **Document Upload** — Support for PDF, DOCX, TXT, and Markdown files

@@ -11,6 +11,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Callable, Dict, Any
+import re
 
 import aiofiles
 from langchain_core.documents import Document
@@ -48,6 +49,7 @@ LOADER_MAPPING = {
     ".html": (UnstructuredHTMLLoader, {}),
     ".md": (UnstructuredMarkdownLoader, {}),
     ".odt": (UnstructuredODTLoader, {}),
+    # Prefer layout-aware PyMuPDF if available; fall back otherwise
     ".pdf": (PyMuPDF4LLMLoader, {"page_chunks": True, "show_progress": False}),
     ".ppt": (UnstructuredPowerPointLoader, {}),
     ".pptx": (UnstructuredPowerPointLoader, {}),
@@ -150,7 +152,7 @@ async def get_chunk_settings() -> Dict[str, Any]:
 
         if embeddings_settings:
             return {
-                "chunk_size": embeddings_settings.value.get("chunk_size", 1000),
+                "chunk_size": embeddings_settings.value.get("chunk_size", 1500),
                 "chunk_overlap": embeddings_settings.value.get("chunk_overlap", 200),
                 "batch_size": embeddings_settings.value.get("batch_size", 100),
                 "rate_limit": embeddings_settings.value.get("rate_limit", 3),
@@ -158,11 +160,19 @@ async def get_chunk_settings() -> Dict[str, Any]:
         else:
             # Defaults
             return {
-                "chunk_size": 1000,
+                "chunk_size": 1500,
                 "chunk_overlap": 200,
                 "batch_size": 100,
                 "rate_limit": 3,
             }
+
+
+def normalize_text(text: str) -> str:
+    """Lightly normalize whitespace to improve splitter behavior."""
+    # Collapse excessive whitespace but keep newlines for structure hints
+    collapsed = re.sub(r"[ \t]+", " ", text)
+    collapsed = re.sub(r"\n{3,}", "\n\n", collapsed)
+    return collapsed.strip()
 
 
 def split_documents(
@@ -182,6 +192,8 @@ def split_documents(
         List of document chunks
     """
     chunks = []
+    seen_chunks = set()
+    min_length = 30
 
     md_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=[
@@ -198,6 +210,9 @@ def split_documents(
 
     for document in documents:
         try:
+            # Normalize upfront to make header/semantic splits cleaner
+            document.page_content = normalize_text(document.page_content)
+
             # First split by markdown headers
             document_chunks = md_splitter.split_text(document.page_content)
 
@@ -215,9 +230,17 @@ def split_documents(
                 if 'page' not in combined_metadata:
                     combined_metadata['page'] = document.metadata.get('page', 0)
 
+                content = normalize_text(chunk.page_content)
+                if not content or len(content) < min_length:
+                    continue
+
+                if content in seen_chunks:
+                    continue
+                seen_chunks.add(content)
+
                 chunks.append(
                     Document(
-                        page_content=chunk.page_content,
+                        page_content=content,
                         metadata=combined_metadata
                     )
                 )
@@ -284,6 +307,9 @@ async def process_single_document(
         if progress_callback:
             await progress_callback(60, f"Created {len(chunks)} chunks...")
 
+        # Estimate storage using chunk contents (we don't keep original uploads)
+        estimated_size_bytes = sum(len(chunk.page_content.encode("utf-8")) for chunk in chunks)
+
         # Add to vectorstore in batches
         batch_size = chunk_settings["batch_size"]
         rate_limit = chunk_settings["rate_limit"]
@@ -317,6 +343,7 @@ async def process_single_document(
             if db_document:
                 db_document.status = DocumentStatus.COMPLETED
                 db_document.chunk_count = len(chunks)
+                db_document.file_size = estimated_size_bytes
                 session.add(db_document)
                 await session.commit()
                 await invalidate_document_stats_cache(db_document.uploaded_by)

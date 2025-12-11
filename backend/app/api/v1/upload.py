@@ -88,7 +88,8 @@ async def upload_file(
     document = Document(
         file_hash=file_hash,
         filename=file.filename,
-        file_size=file_size,
+        # We'll compute and persist an estimated size from chunks during processing
+        file_size=None,
         mime_type=mime_type,
         status=DocumentStatus.PROCESSING,
         uploaded_by=current_user.id,
